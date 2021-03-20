@@ -86,15 +86,6 @@ const ProcessorStatus = struct {
     }
 };
 
-const OpCode = enum(u8) {
-    BRK = 0, // break!
-    LDA_IMMEDIATE = 0xA9, // load accumulator immediate adressing
-    LDA_ZERO_PAGE = 0xA5, // load accumulator zero page adressing
-    TAX = 0xAA, // Transfer accumulator to X
-    INX = 0xE8, // Increment X
-    _,
-};
-
 const AdressingMode = enum {
     implicit,
     accumulator,
@@ -111,72 +102,90 @@ const AdressingMode = enum {
     indirect_indexed,
 };
 
-const operation_fn = fn (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void;
 
 const Operation = struct {
+    const operation_fn = fn (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void;
+
     op_code_value: u8,
     op_fn: operation_fn,
     addressing_mode: AdressingMode,
-};
-
-const known_operations = [_]Operation{
-    .{0x00, brk, AdressingMode.implicit},
-
-    .{0xA9, lda, AdressingMode.immediate},
-    .{0xA5, lda, AdressingMode.zero_page},
-
-    .{0xAA, tax, AdressingMode.implicit},
-
-    .{0xE8, inx,  AdressingMode.implicit},
-};
-
-fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void {
-    defer cycling = false;
-    _ = @addWithOverflow(u8, cpu.x, 1, &cpu.x);
-    cpu.p.set_flag_val_neg(cpu.x);
-    cpu.p.set_flag_val_zero(cpu.x);
-}
-
-fn tax (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void {
-    defer cycling = false;
-
-    cpu.x = cpu.a;
-    cpu.p.set_flag_val_neg(cpu.x);
-    cpu.p.set_flag_val_zero(cpu.x);
-}
-
-fn lda (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void {
-    defer cycling = false;
-    
-    switch(addressing_mode){
-        
-        AdressingMode.immediate => {
-            // load the value in accumulator
-            cpu.a = cpu.fetch();
-            // set flags
-            cpu.p.set_flags_val_and_neg(cpu.a);
-        },
-        
-        AdressingMode.zero_page => {
-            const addr = cpu.fetch();
-            suspend;
-            cpu.a = cpu.mem_read_u8(addr);
-            cpu.p.set_flags_val_and_neg(cpu.a);
-        },
-
-        else => @panic("Unknown adresing mode for LDA")
+    pub fn build(op_code_value: u8, op_fn: operation_fn, addressing_mode: AdressingMode) Operation {
+        return Operation{
+            .op_code_value = op_code_value,
+            .op_fn = op_fn,
+            .addressing_mode = addressing_mode,
+        };
     }
-}
+    
+};
 
-fn brk(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void {
-    defer cycling = false;
-    suspend;
-    suspend;
-    suspend;
-    suspend;
-    suspend;
-    suspend;
-}
+const KnownOps = struct {
+    const known_operations = [_]Operation{
+        Operation.build(0x00, brk, AdressingMode.implicit),
+        Operation.build(0xA9, lda, AdressingMode.immediate),
+        Operation.build(0xA5, lda, AdressingMode.zero_page),
+        Operation.build(0xAA, tax, AdressingMode.implicit),
+        Operation.build(0xE8, inx,  AdressingMode.implicit),
+    };
+
+    pub fn get_operation(self: KnownOps, value: u8) Operation {
+        for (known_operations) |op| {
+            if(op.op_code_value == value)
+            return op;
+        }
+        @panic("Unknown operation for KnownOps.get_operation");
+    }
+
+    fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+        _ = @addWithOverflow(u8, cpu.x, 1, &cpu.x);
+        cpu.p.set_flag_val_neg(cpu.x);
+        cpu.p.set_flag_val_zero(cpu.x);
+    }
+
+    fn tax (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+
+        cpu.x = cpu.a;
+        cpu.p.set_flag_val_neg(cpu.x);
+        cpu.p.set_flag_val_zero(cpu.x);
+    }
+
+    fn lda (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+        
+        switch(addressing_mode){
+            
+            AdressingMode.immediate => {
+                // load the value in accumulator
+                cpu.a = cpu.fetch();
+                // set flags
+                cpu.p.set_flags_val_and_neg(cpu.a);
+            },
+            
+            AdressingMode.zero_page => {
+                const addr = cpu.fetch();
+                suspend;
+                cpu.a = cpu.mem_read_u8(addr);
+                cpu.p.set_flags_val_and_neg(cpu.a);
+            },
+
+            else => @panic("Unknown adresing mode for LDA")
+        }
+    }
+
+    fn brk(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+        suspend;
+        suspend;
+        suspend;
+        suspend;
+        suspend;
+        suspend;
+    }
+};
+
+const operations = KnownOps{};
 
 const NesCpu = struct {
     const Internal = struct {
@@ -275,50 +284,22 @@ const NesCpu = struct {
     }
 
     fn cycle(self: *NesCpu) void {
-        const opcode = @intToEnum(OpCode, self.fetch());
+        const opcode = self.fetch();
         self.internal.require_new_cycle_frame = false;
         defer self.internal.require_new_cycle_frame = true;
         suspend; // first fetch always costs a cycle
 
-        switch (opcode){
-            OpCode.LDA_IMMEDIATE => { // LDA : 
-                // load the value in accumulator
-                self.a = self.fetch();
-                // set flags
-                self.p.set_flag_val_neg(self.a);
-                self.p.set_flag_val_zero(self.a);
-            },
+        const op = operations.get_operation(opcode);
+        var cycling = true;
 
-            OpCode.LDA_ZERO_PAGE => {
-                const addr = self.fetch();
-                suspend;
-                self.a = self.mem_read_u8(addr);
-                self.p.set_flag_val_neg(self.a);
-                self.p.set_flag_val_zero(self.a);
-            },
-            
-            OpCode.BRK => {
-                suspend;
-                suspend;
-                suspend;
-                suspend;
-                suspend;
-                suspend;
-            },
-
-            OpCode.TAX => {
-                self.x = self.a;
-                self.p.set_flag_val_neg(self.x);
-                self.p.set_flag_val_zero(self.x);
-            },
-
-            OpCode.INX => {
-                _ = @addWithOverflow(u8, self.x, 1, &self.x);
-                self.p.set_flag_val_neg(self.x);
-                self.p.set_flag_val_zero(self.x);
-            },
-
-            else => @panic("unknown instruction"),
+        var allocator = std.heap.page_allocator;
+        var frame_buffer = @alignCast(16, allocator.alloc(u8, 2048) catch return);
+        defer allocator.free(frame_buffer);
+        
+        var op_frame = @asyncCall(frame_buffer, {}, op.op_fn, .{self, op.addressing_mode, &cycling});
+        while(cycling) {
+            suspend;
+            resume op_frame;
         }
     }
 
