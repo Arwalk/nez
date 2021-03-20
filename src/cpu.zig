@@ -79,6 +79,11 @@ const ProcessorStatus = struct {
             self.negative = false;
         }
     }
+
+    pub fn set_flags_val_and_neg(self: *ProcessorStatus, value: u8) void {
+        self.set_flag_val_neg(value);
+        self.set_flag_val_zero(value);
+    }
 };
 
 const OpCode = enum(u8) {
@@ -89,6 +94,89 @@ const OpCode = enum(u8) {
     INX = 0xE8, // Increment X
     _,
 };
+
+const AdressingMode = enum {
+    implicit,
+    accumulator,
+    immediate,
+    zero_page,
+    zero_page_x,
+    zero_page_y,
+    relative,
+    absolute,
+    absolute_x,
+    absolute_y,
+    indirect,
+    indexed_indirect,
+    indirect_indexed,
+};
+
+const operation_fn = fn (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void;
+
+const Operation = struct {
+    op_code_value: u8,
+    op_fn: operation_fn,
+    addressing_mode: AdressingMode,
+};
+
+const known_operations = [_]Operation{
+    .{0x00, brk, AdressingMode.implicit},
+
+    .{0xA9, lda, AdressingMode.immediate},
+    .{0xA5, lda, AdressingMode.zero_page},
+
+    .{0xAA, tax, AdressingMode.implicit},
+
+    .{0xE8, inx,  AdressingMode.implicit},
+};
+
+fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void {
+    defer cycling = false;
+    _ = @addWithOverflow(u8, cpu.x, 1, &cpu.x);
+    cpu.p.set_flag_val_neg(cpu.x);
+    cpu.p.set_flag_val_zero(cpu.x);
+}
+
+fn tax (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void {
+    defer cycling = false;
+
+    cpu.x = cpu.a;
+    cpu.p.set_flag_val_neg(cpu.x);
+    cpu.p.set_flag_val_zero(cpu.x);
+}
+
+fn lda (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void {
+    defer cycling = false;
+    
+    switch(addressing_mode){
+        
+        AdressingMode.immediate => {
+            // load the value in accumulator
+            cpu.a = cpu.fetch();
+            // set flags
+            cpu.p.set_flags_val_and_neg(cpu.a);
+        },
+        
+        AdressingMode.zero_page => {
+            const addr = cpu.fetch();
+            suspend;
+            cpu.a = cpu.mem_read_u8(addr);
+            cpu.p.set_flags_val_and_neg(cpu.a);
+        },
+
+        else => @panic("Unknown adresing mode for LDA")
+    }
+}
+
+fn brk(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) void {
+    defer cycling = false;
+    suspend;
+    suspend;
+    suspend;
+    suspend;
+    suspend;
+    suspend;
+}
 
 const NesCpu = struct {
     const Internal = struct {
