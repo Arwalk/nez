@@ -84,6 +84,7 @@ const ProcessorStatus = struct {
 const OpCode = enum(u8) {
     BRK = 0, // break!
     LDA_IMMEDIATE = 0xA9, // load accumulator immediate adressing
+    LDA_ZERO_PAGE = 0xA5, // load accumulator zero page adressing
     TAX = 0xAA, // Transfer accumulator to X
     INX = 0xE8, // Increment X
     _,
@@ -131,10 +132,18 @@ const NesCpu = struct {
         self.memory[addr+1] = @intCast(u8, val >> 8);
     }
 
+    fn mem_write_u8(self: *NesCpu, addr: u16, val: u8) void {
+        self.memory[addr] = val;
+    }
+
     fn mem_read_u16(self: *NesCpu, addr: u16) u16 {
         var val : u16 = self.memory[addr];
         val += (@intCast(u16, self.memory[addr+1]) << 8);
         return val;
+    }
+
+    fn mem_read_u8(self: *NesCpu, addr: u16) u8 {
+        return self.memory[addr];
     }
 
     pub fn load(self: *NesCpu, program: []u8) void {
@@ -148,6 +157,7 @@ const NesCpu = struct {
         self.x = 0;
         self.sp = 0;
         self.p = ProcessorStatus.init();
+        self.y = 0;
         self.pc = self.mem_read_u16(0xFFFC);
     }
 
@@ -189,6 +199,14 @@ const NesCpu = struct {
                 self.p.set_flag_val_neg(self.a);
                 self.p.set_flag_val_zero(self.a);
             },
+
+            OpCode.LDA_ZERO_PAGE => {
+                const addr = self.fetch();
+                suspend;
+                self.a = self.mem_read_u8(addr);
+                self.p.set_flag_val_neg(self.a);
+                self.p.set_flag_val_zero(self.a);
+            },
             
             OpCode.BRK => {
                 suspend;
@@ -222,6 +240,12 @@ const NesCpu = struct {
         while(self.internal.progam_running) {
             resume cpu_frame;
         }
+    }
+
+    pub fn load_and_interpret(self: *NesCpu, program: []u8) void {
+        self.load(program);
+        self.reset();
+        self.interpret();
     }
 
 };
@@ -305,4 +329,13 @@ test "test_inx_overflow" {
     cpu.x = 0xFF;
     cpu.interpret();
     expect(cpu.x == 1);
+}
+
+test "test_lda_from_memory" {
+    var basic_progam = [_]u8{0xa5, 0x10, 0x00};    
+    var cpu =  NesCpu.init();
+    cpu.mem_write_u8(0x10, 0x55);
+    cpu.load_and_interpret(&basic_progam);
+
+    expect(cpu.a == 0x55);
 }
