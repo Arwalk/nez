@@ -174,6 +174,7 @@ const NesCpu = struct {
     
     pub fn start_cpu_frame(self: *NesCpu) void {
         self.internal.progam_running = true;
+        defer self.internal.progam_running = false;
         while(self.internal.fetch_count < self.internal.progam_len){
             var internal_frame = async self.cycle();
             suspend;
@@ -183,12 +184,12 @@ const NesCpu = struct {
                 suspend;
             }
         }
-        self.internal.progam_running = false;
     }
 
     fn cycle(self: *NesCpu) void {
         const opcode = @intToEnum(OpCode, self.fetch());
         self.internal.require_new_cycle_frame = false;
+        defer self.internal.require_new_cycle_frame = true;
         suspend; // first fetch always costs a cycle
 
         switch (opcode){
@@ -231,8 +232,6 @@ const NesCpu = struct {
 
             else => @panic("unknown instruction"),
         }
-
-        self.internal.require_new_cycle_frame = true;
     }
 
     pub fn interpret(self: *NesCpu) void {
