@@ -1,5 +1,6 @@
 const std = @import("std");
 const expect = std.testing.expect;
+const warn = std.log.warn;
 const debug = std.log.debug;
 
 const ProcessorStatus = struct {
@@ -90,6 +91,8 @@ const OpCode = enum(u8) {
 
 const NesCpu = struct {
     const Internal = struct {
+        fetch_count: usize,
+        progam_len: usize,
         require_new_cycle_frame: bool,
         progam_running: bool,
     };
@@ -102,30 +105,58 @@ const NesCpu = struct {
     sp: u8, // stack pointer
     p: ProcessorStatus, // processor status flags
     pc: u16, // program counter
+    memory: [0xFFFF]u8,
 
-    program: []u8, // program pointer
-
-    pub fn init(program: []u8) NesCpu {
-        return NesCpu{
+    pub fn init() NesCpu {
+        var nescpu = NesCpu{
             .a = 0,
             .x = 0,
             .y = 0,
             .sp = 0,
             .p = ProcessorStatus.init(),
-            .pc = 0,
-            .program = program,
+            .pc = 0x8000,
+            .memory = [_]u8{0} ** 0xFFFF,
             .internal = Internal{
+                .fetch_count = 0,
+                .progam_len = 0,
                 .progam_running = false,
                 .require_new_cycle_frame = true,
             }
         };
+        return nescpu;
+    }
+
+    fn mem_write_u16(self: *NesCpu, addr: u16, val: u16) void {
+        self.memory[addr] = @intCast(u8, val & 0xFF);
+        self.memory[addr+1] = @intCast(u8, val >> 8);
+    }
+
+    fn mem_read_u16(self: *NesCpu, addr: u16) u16 {
+        var val : u16 = self.memory[addr];
+        val += (@intCast(u16, self.memory[addr+1]) << 8);
+        return val;
+    }
+
+    pub fn load(self: *NesCpu, program: []u8) void {
+        for (program[0..program.len]) |b, i| self.memory[i + 0x8000] = b;
+        self.mem_write_u16(0xFFFC, 0x8000);
+        self.internal.progam_len = program.len;
+    }
+
+    pub fn reset(self: *NesCpu) void {
+        self.a = 0;
+        self.x = 0;
+        self.sp = 0;
+        self.p = ProcessorStatus.init();
+        self.pc = self.mem_read_u16(0xFFFC);
     }
 
     fn fetch(self: *NesCpu) u8 {
         debug("--> fetch", .{});
         debug("fetching data at index self.pc: {}", .{self.pc});
-        const val: u8 = self.program[self.pc];
+        const val: u8 = self.memory[self.pc];
         self.pc += 1;
+        self.internal.fetch_count += 1;
         debug("<-- fetch {}", .{val});
         return val;
     }
@@ -133,7 +164,7 @@ const NesCpu = struct {
     
     pub fn start_cpu_frame(self: *NesCpu) void {
         self.internal.progam_running = true;
-        while(self.pc < self.program.len){
+        while(self.internal.fetch_count < self.internal.progam_len){
             var internal_frame = async self.cycle();
             suspend;
 
@@ -228,28 +259,30 @@ test "get raw value ProcessorStatus" {
 
 test "test_5_ops_working_together" {
     var basic_progam = [_]u8{0xA9, 0xC0, 0xAA, 0xE8, 00};
-    var cpu =  NesCpu.init(&basic_progam);
+    var cpu =  NesCpu.init();
+    cpu.load(&basic_progam);
+    cpu.reset();
 
     var cpu_frame = async cpu.start_cpu_frame();
     // A9 C0 (2 cycles)
     expect(cpu.a == 0x00);
-    expect(cpu.pc == 1);
+    expect(cpu.pc == 0x8000 + 1);
     resume cpu_frame;
     expect(cpu.a == 0xC0);
-    expect(cpu.pc == 2);
+    expect(cpu.pc == 0x8000 + 2);
 
     // AA (2 cycles)
     resume cpu_frame;
-    expect(cpu.pc == 3);
+    expect(cpu.pc == 0x8000 + 3);
     expect(cpu.x == 0);
     resume cpu_frame;
-    expect(cpu.pc == 3);
+    expect(cpu.pc == 0x8000 + 3);
     expect(cpu.x == 0xC0);
 
     // INX (2 cycles)
     resume cpu_frame;
     resume cpu_frame;
-    expect(cpu.pc == 4);
+    expect(cpu.pc == 0x8000 + 4);
     expect(cpu.x == 0xC1);
 
     // BRK (7 cycles)
@@ -261,12 +294,14 @@ test "test_5_ops_working_together" {
     resume cpu_frame;
     resume cpu_frame;
 
-    expect(cpu.pc == 5);
+    expect(cpu.pc == 0x8000 + 5);
 }
 
 test "test_inx_overflow" {
     var basic_progam = [_]u8{0xE8, 0xE8, 0x00};    
-    var cpu =  NesCpu.init(&basic_progam);
+    var cpu =  NesCpu.init();
+    cpu.load(&basic_progam);
+    cpu.reset();
     cpu.x = 0xFF;
     cpu.interpret();
     expect(cpu.x == 1);
