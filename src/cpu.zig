@@ -38,9 +38,12 @@ const Operation = struct {
 
     const known_operations = [_]Operation{
         build(0x00, brk, AdressingMode.implicit),
+
         build(0xA9, lda, AdressingMode.immediate),
         build(0xA5, lda, AdressingMode.zero_page),
+
         build(0xAA, tax, AdressingMode.implicit),
+
         build(0xE8, inx,  AdressingMode.implicit),
     };
 
