@@ -3,107 +3,25 @@ const expect = std.testing.expect;
 const warn = std.log.warn;
 const debug = std.log.debug;
 
-const ProcessorStatus = struct {
-    carry: bool,
-    zero: bool,
-    interrupt_disable: bool,
-    decimal_mode: bool,
-    break_cmd: bool,
-    unused: bool,
-    overflow: bool,
-    negative: bool,
-
-    fn init() ProcessorStatus {
-        return ProcessorStatus {
-            .carry = false,
-            .zero = false,
-            .interrupt_disable = false,
-            .decimal_mode = false,
-            .break_cmd = false,
-            .unused = true,
-            .overflow = false,
-            .negative = false,
-        };
-    }
-
-    fn get_raw_value(self: ProcessorStatus) u8 {
-        var value: u8 = 0;
-        if(self.carry)
-        {
-            value += 1;
-        }
-
-        if(self.zero)
-        {
-            value += (1 << 1);
-        }
-        if(self.interrupt_disable)
-        {
-            value += (1 << 2);
-        }
-        if(self.decimal_mode)
-        {
-            value += (1 << 3);
-        }
-        if(self.break_cmd)
-        {
-            value += (1 << 4);
-        }
-        if(self.unused)
-        {
-            value += (1 << 5);
-        }
-        if(self.overflow)
-        {
-            value += (1 << 6);
-        }
-        if(self.negative)
-        {
-            value += (1 << 7);
-        }
-        return value;
-    }
-
-    pub fn set_flag_val_zero(self: *ProcessorStatus, value: u8) void {
-        if(value == 0){
-            self.zero = true;
-        } else {
-            self.zero = false;
-        }
-    }
-
-    pub fn set_flag_val_neg(self: *ProcessorStatus, value: u8) void {
-        if((value & 0b10000000) != 0){
-            self.negative = true;
-        } else {
-            self.negative = false;
-        }
-    }
-
-    pub fn set_flags_val_and_neg(self: *ProcessorStatus, value: u8) void {
-        self.set_flag_val_neg(value);
-        self.set_flag_val_zero(value);
-    }
-};
-
-const AdressingMode = enum {
-    implicit,
-    accumulator,
-    immediate,
-    zero_page,
-    zero_page_x,
-    zero_page_y,
-    relative,
-    absolute,
-    absolute_x,
-    absolute_y,
-    indirect,
-    indexed_indirect,
-    indirect_indexed,
-};
-
 
 const Operation = struct {
+
+    const AdressingMode = enum {
+        implicit,
+        accumulator,
+        immediate,
+        zero_page,
+        zero_page_x,
+        zero_page_y,
+        relative,
+        absolute,
+        absolute_x,
+        absolute_y,
+        indirect,
+        indexed_indirect,
+        indirect_indexed,
+    };
+
     const operation_fn = fn (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void;
 
     op_code_value: u8,
@@ -184,6 +102,90 @@ const Operation = struct {
 };
 
 const NesCpu = struct {
+
+    const ProcessorStatus = struct {
+        carry: bool,
+        zero: bool,
+        interrupt_disable: bool,
+        decimal_mode: bool,
+        break_cmd: bool,
+        unused: bool,
+        overflow: bool,
+        negative: bool,
+
+        fn init() ProcessorStatus {
+            return ProcessorStatus {
+                .carry = false,
+                .zero = false,
+                .interrupt_disable = false,
+                .decimal_mode = false,
+                .break_cmd = false,
+                .unused = true,
+                .overflow = false,
+                .negative = false,
+            };
+        }
+
+        fn get_raw_value(self: ProcessorStatus) u8 {
+            var value: u8 = 0;
+            if(self.carry)
+            {
+                value += 1;
+            }
+
+            if(self.zero)
+            {
+                value += (1 << 1);
+            }
+            if(self.interrupt_disable)
+            {
+                value += (1 << 2);
+            }
+            if(self.decimal_mode)
+            {
+                value += (1 << 3);
+            }
+            if(self.break_cmd)
+            {
+                value += (1 << 4);
+            }
+            if(self.unused)
+            {
+                value += (1 << 5);
+            }
+            if(self.overflow)
+            {
+                value += (1 << 6);
+            }
+            if(self.negative)
+            {
+                value += (1 << 7);
+            }
+            return value;
+        }
+
+        pub fn set_flag_val_zero(self: *ProcessorStatus, value: u8) void {
+            if(value == 0){
+                self.zero = true;
+            } else {
+                self.zero = false;
+            }
+        }
+
+        pub fn set_flag_val_neg(self: *ProcessorStatus, value: u8) void {
+            if((value & 0b10000000) != 0){
+                self.negative = true;
+            } else {
+                self.negative = false;
+            }
+        }
+
+        pub fn set_flags_val_and_neg(self: *ProcessorStatus, value: u8) void {
+            self.set_flag_val_neg(value);
+            self.set_flag_val_zero(value);
+        }
+    };
+
     const Internal = struct {
         fetch_count: usize,
         progam_len: usize,
@@ -315,7 +317,7 @@ const NesCpu = struct {
 };
 
 test "get raw value ProcessorStatus" {
-    var p = ProcessorStatus.init();
+    var p = NesCpu.ProcessorStatus.init();
     p.unused = false;
 
     expect(0 == p.get_raw_value());
