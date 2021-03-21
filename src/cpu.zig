@@ -302,12 +302,10 @@ const NesCpu = struct {
 
         const op = Operation.get_operation(opcode);
         var cycling = true;
-
-        var allocator = std.heap.page_allocator;
-        var frame_buffer = @alignCast(16, allocator.alloc(u8, Operation.max_frame_size) catch return);
-        defer allocator.free(frame_buffer);
         
-        var op_frame = @asyncCall(frame_buffer, {}, op.op_fn, .{self, op.addressing_mode, &cycling});
+        var bytes: [Operation.max_frame_size]u8 align(16) = undefined;
+
+        var op_frame = @asyncCall(&bytes, {}, op.op_fn, .{self, op.addressing_mode, &cycling});
         while(cycling) {
             suspend;
             resume op_frame;
