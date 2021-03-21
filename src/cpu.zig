@@ -109,6 +109,7 @@ const Operation = struct {
     op_code_value: u8,
     op_fn: operation_fn,
     addressing_mode: AdressingMode,
+
     pub fn build(op_code_value: u8, op_fn: operation_fn, addressing_mode: AdressingMode) Operation {
         return Operation{
             .op_code_value = op_code_value,
@@ -116,26 +117,23 @@ const Operation = struct {
             .addressing_mode = addressing_mode,
         };
     }
-    
-};
 
-const KnownOps = struct {
     const known_operations = [_]Operation{
-        Operation.build(0x00, brk, AdressingMode.implicit),
-        Operation.build(0xA9, lda, AdressingMode.immediate),
-        Operation.build(0xA5, lda, AdressingMode.zero_page),
-        Operation.build(0xAA, tax, AdressingMode.implicit),
-        Operation.build(0xE8, inx,  AdressingMode.implicit),
+        build(0x00, brk, AdressingMode.implicit),
+        build(0xA9, lda, AdressingMode.immediate),
+        build(0xA5, lda, AdressingMode.zero_page),
+        build(0xAA, tax, AdressingMode.implicit),
+        build(0xE8, inx,  AdressingMode.implicit),
     };
 
-    pub fn get_operation(self: KnownOps, value: u8) Operation {
+    pub fn get_operation(op_code: u8) Operation {
         for (known_operations) |op| {
-            if(op.op_code_value == value)
+            if(op.op_code_value == op_code)
             return op;
         }
         @panic("Unknown operation for KnownOps.get_operation");
     }
-
+    
     fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         defer cycling.* = false;
         _ = @addWithOverflow(u8, cpu.x, 1, &cpu.x);
@@ -184,8 +182,6 @@ const KnownOps = struct {
         suspend;
     }
 };
-
-const operations = KnownOps{};
 
 const NesCpu = struct {
     const Internal = struct {
@@ -289,7 +285,7 @@ const NesCpu = struct {
         defer self.internal.require_new_cycle_frame = true;
         suspend; // first fetch always costs a cycle
 
-        const op = operations.get_operation(opcode);
+        const op = Operation.get_operation(opcode);
         var cycling = true;
 
         var allocator = std.heap.page_allocator;
