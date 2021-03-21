@@ -44,6 +44,19 @@ const Operation = struct {
         build(0xE8, inx,  AdressingMode.implicit),
     };
 
+    fn _get_max_operation_frame_size() usize {
+        var size : usize = 0;
+        inline for (known_operations) |operation| {
+            const op_size = @sizeOf(@Frame(operation.op_fn));
+            if (op_size > size) {
+                size = op_size;
+            }
+        }
+        return size;
+    }
+
+    const max_frame_size = _get_max_operation_frame_size();
+
     pub fn get_operation(op_code: u8) Operation {
         for (known_operations) |op| {
             if(op.op_code_value == op_code)
@@ -291,7 +304,7 @@ const NesCpu = struct {
         var cycling = true;
 
         var allocator = std.heap.page_allocator;
-        var frame_buffer = @alignCast(16, allocator.alloc(u8, 2048) catch return);
+        var frame_buffer = @alignCast(16, allocator.alloc(u8, Operation.max_frame_size) catch return);
         defer allocator.free(frame_buffer);
         
         var op_frame = @asyncCall(frame_buffer, {}, op.op_fn, .{self, op.addressing_mode, &cycling});
