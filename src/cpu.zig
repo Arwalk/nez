@@ -28,6 +28,8 @@ const Operation = struct {
     op_fn: operation_fn,
     addressing_mode: AdressingMode,
 
+    // operation lookup table
+
     pub fn build(op_code_value: u8, op_fn: operation_fn, addressing_mode: AdressingMode) Operation {
         return Operation{
             .op_code_value = op_code_value,
@@ -37,14 +39,27 @@ const Operation = struct {
     }
 
     const known_operations = [_]Operation{
-        build(0x00, brk, AdressingMode.implicit),
+        build(0x00, brk, .implicit),
 
-        build(0xA9, lda, AdressingMode.immediate),
-        build(0xA5, lda, AdressingMode.zero_page),
+        // a register
+        build(0xA9, lda, .immediate),
+        build(0xA5, lda, .zero_page),
 
-        build(0xAA, tax, AdressingMode.implicit),
+        build(0xAA, tax, .implicit),
 
-        build(0xE8, inx,  AdressingMode.implicit),
+        // x register
+        build(0xE8, inx, .implicit),
+        
+        build(0xA2, ldx, .immediate),
+
+        build(0xCA, dex, .implicit),
+
+        build(0x8E, stx, .absolute),
+
+        build(0xE0, cpx, .immediate),
+
+        // branching
+        build(0xD0, bne, .relative),
     };
 
     fn _get_max_operation_frame_size() usize {
@@ -65,9 +80,106 @@ const Operation = struct {
             if(op.op_code_value == op_code)
             return op;
         }
+        warn("Unknown operation opcode: {x}", .{op_code});
         @panic("Unknown operation for KnownOps.get_operation");
     }
     
+    // helpers
+
+    fn register_load_immediate(cpu: *NesCpu, register: *u8) void {
+        register.* = cpu.fetch();
+        cpu.p.set_flags_val_and_neg(register.*);
+    }
+
+    fn register_decrement(cpu: *NesCpu, register: *u8) void {
+        _ = @subWithOverflow(u8, register.*, 1, register);
+    }
+
+    fn register_store_absolute(cpu: *NesCpu, register: *u8, cycling: *bool) void {
+        defer cycling.* = false;
+        
+        var address : u16 = cpu.fetch();
+        suspend; // first part fetch
+
+        address += (@intCast(u16, cpu.fetch()) << 8);
+        suspend; // second part fetch
+
+        cpu.mem_write_u8(address, register.*);
+    }
+
+    fn register_compare(cpu: *NesCpu, register_value: u8, compare_value: u8) void {
+        if(register_value >= compare_value) {
+            cpu.p.carry = true;
+        } else {
+            cpu.p.carry = false;
+        }
+        
+        cpu.p.zero = (register_value == compare_value);
+        var cmp_value_calc : u8 = 0;
+        _ = @subWithOverflow(u8, register_value, compare_value, &cmp_value_calc);
+
+        cpu.p.negative = ((cmp_value_calc >> 7) == 1);
+    }
+
+    fn register_compare_immediate(cpu: *NesCpu, register: *u8) void {
+        register_compare(cpu, register.*, cpu.fetch());
+    }
+
+    // operations
+
+    fn bne (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+
+        const relative_addr : i8 = @bitCast(i8, cpu.fetch());
+
+        if(!cpu.p.zero) {
+            suspend;
+            cpu.pc = @intCast(u16, @intCast(i32, cpu.pc) - @intCast(i32, relative_addr));
+        }
+    }
+
+    fn cpx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+
+        switch (addressing_mode) {
+            .immediate => register_compare_immediate(cpu, &cpu.x),
+            else => @panic("Unknown adresing mode for CPX"),
+        }
+    }
+
+    fn stx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+
+        switch (addressing_mode) {
+            .absolute => {
+                var store_frame = async register_store_absolute(cpu, &cpu.x, cycling);
+                while(cycling.*) {
+                    suspend;
+                    resume store_frame;
+                }
+            },
+
+            else => @panic("Unknown adresing mode for STX"),
+        }
+    }
+
+    fn dex (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+        register_decrement(cpu, &cpu.x);
+    }
+
+    fn ldx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        defer cycling.* = false;
+
+        switch(addressing_mode) {
+            .immediate => {
+                register_load_immediate(cpu, &cpu.x);
+            },
+
+            else => @panic("Unknown adresing mode for LDX"),
+        }
+    }
+
     fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         defer cycling.* = false;
         _ = @addWithOverflow(u8, cpu.x, 1, &cpu.x);
@@ -88,14 +200,11 @@ const Operation = struct {
         
         switch(addressing_mode){
             
-            AdressingMode.immediate => {
-                // load the value in accumulator
-                cpu.a = cpu.fetch();
-                // set flags
-                cpu.p.set_flags_val_and_neg(cpu.a);
+            .immediate => {
+                register_load_immediate(cpu, &cpu.a);
             },
             
-            AdressingMode.zero_page => {
+            .zero_page => {
                 const addr = cpu.fetch();
                 suspend;
                 cpu.a = cpu.mem_read_u8(addr);
@@ -418,4 +527,13 @@ test "test_lda_from_memory" {
     cpu.load_and_interpret(&basic_progam);
 
     expect(cpu.a == 0x55);
+}
+
+test "Branching from https://skilldrick.github.io/easy6502/" {
+    var basic_progam = [_]u8{0xa2, 0x08, 0xca, 0x8e, 0x00, 0x02, 0xe0, 0x03, 0xd0, 0xf8, 0x8e, 0x01, 0x02, 0x00};
+    var cpu =  NesCpu.init();
+    cpu.load_and_interpret(&basic_progam);
+
+    expect(cpu.x == 3);
+    expect(cpu.pc == 0x8000 + 0xE);
 }
