@@ -20,6 +20,28 @@ const Operation = struct {
         indirect,
         indexed_indirect,
         indirect_indexed,
+
+        pub fn is_absolute(addressing_mode: AdressingMode) bool {
+            switch(addressing_mode) {
+                .absolute, .absolute_x, .absolute_y => return true,
+                else => return false
+            }
+        }
+
+        pub fn is_plus_register(addressing_mode: AdressingMode) bool {
+            switch(addressing_mode) {
+                .zero_page_x, .zero_page_y, .absolute_x, .absolute_y => return true,
+                else => return false
+            }
+        }
+
+        pub fn get_register_to_add(addressing_mode: AdressingMode, cpu: *NesCpu) u8 {
+            switch(addressing_mode) {
+                .zero_page_x, .absolute_x => return cpu.x,
+                .zero_page_y, .absolute_y => return cpu.y,
+                else => @panic("wrong adressing mode"),
+            }
+        }
     };
 
     const operation_fn = fn (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void;
@@ -44,6 +66,10 @@ const Operation = struct {
         // a register
         build(0xA9, lda, .immediate),
         build(0xA5, lda, .zero_page),
+        build(0xB5, lda, .zero_page_x),
+        build(0xAD, lda, .absolute),
+        build(0xBD, lda, .absolute_x),
+        build(0xB9, lda, .absolute_y),
         build(0xC9, cmp, .immediate),
 
         build(0xAA, tax, .implicit),
@@ -83,6 +109,18 @@ const Operation = struct {
     }
 
     // operations
+
+    fn cmp (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> cmp\n", .{});
+        defer cycling.* = false;
+
+        switch (addressing_mode) {
+            .immediate => register_compare_immediate(cpu, &cpu.a),
+            else => @panic("Unknown adressing mode for CPX"),
+        }
+
+        debug("<--- cmp\n", .{});
+    }
 
     fn bne (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> bne\n", .{});
@@ -172,7 +210,7 @@ const Operation = struct {
     }
 
     fn lda (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
-        debug("---> lda\n", .{});
+        debug("---> lda, adressing: {}, cpu.x: {x}, cpu.y: {x}\n", .{addressing_mode, cpu.x, cpu.y});
         defer cycling.* = false;
         
         switch(addressing_mode){
@@ -181,15 +219,57 @@ const Operation = struct {
                 register_load_immediate(cpu, &cpu.a);
             },
             
-            .zero_page => {
-                const addr = cpu.fetch();
-                suspend;
-                debug("lda zero page mode: loading value @{x}", .{addr});
-                cpu.a = cpu.mem_read_u8(addr);
+            .zero_page, .zero_page_x => {
+                var low_part = cpu.fetch();
+                debug("lda: address low part = {x}", .{low_part});
+                suspend; // low part fetch
+
+                if(addressing_mode.is_plus_register()) {
+                    const register = addressing_mode.get_register_to_add(cpu);
+                    debug("lda: adding register value {x} to low_part", .{register});
+                    const carry = @addWithOverflow(u8, low_part, register, &low_part);
+                    debug("lda: new address low part = {x}", .{low_part});
+                    suspend;
+                }
+
+                debug("lda: zero page mode: loading value @{x}", .{low_part});
+                cpu.a = cpu.mem_read_u8(low_part);
+                debug("lda: value loaded in a: {x}", .{cpu.a});
                 cpu.p.set_flags_val_and_neg(cpu.a);
             },
 
-            else => @panic("Unknown adresing mode for LDA")
+            .absolute, .absolute_y, .absolute_x => {
+                var low_part = cpu.fetch();
+                debug("lda: address low part = {x}", .{low_part});
+                suspend; // low part fetch
+
+                var high_part = cpu.fetch();
+                debug("lda: address high part = {}", .{high_part});
+                suspend; // hi part fetch
+
+                if(addressing_mode.is_plus_register()) {
+                    const register = addressing_mode.get_register_to_add(cpu);
+                    debug("lda: adding register value {x} to low_part", .{register});
+                    const carry = @addWithOverflow(u8, low_part, register, &low_part);
+                    debug("lda: new address low part = {x}", .{low_part});
+                    suspend;
+                    if(carry) {
+                        debug("lda: page crossed on absolute,[register] adressing", .{});
+                        _ = @addWithOverflow(u8, high_part, 1, &high_part);
+                        debug("lda: new address high part = {}", .{high_part});
+                        suspend;
+                    }
+                }
+
+                const addr = low_part + (@intCast(u16, high_part) << 8);
+
+                debug("lda: zero page mode: loading value @{x}", .{addr});
+                cpu.a = cpu.mem_read_u8(addr);
+                debug("lda: value loaded in a: {x}", .{cpu.a});
+                cpu.p.set_flags_val_and_neg(cpu.a);
+            },
+
+            else => @panic("Unknown adressing mode for LDA")
         }
         debug("<--- lda a: {x}\n", .{cpu.a});
     }
@@ -222,10 +302,10 @@ const Operation = struct {
         defer cycling.* = false;
         
         var address : u16 = cpu.fetch();
-        suspend; // first part fetch
+        suspend; // low part fetch
 
         address += (@intCast(u16, cpu.fetch()) << 8);
-        suspend; // second part fetch
+        suspend; // high part fetch
     
         debug("register_store_absolute: store value {x} @{x} \n", .{register.*, address});
 
@@ -279,44 +359,6 @@ const NesCpu = struct {
                 .overflow = false,
                 .negative = false,
             };
-        }
-
-        fn get_raw_value(self: ProcessorStatus) u8 {
-            var value: u8 = 0;
-            if(self.carry)
-            {
-                value += 1;
-            }
-
-            if(self.zero)
-            {
-                value += (1 << 1);
-            }
-            if(self.interrupt_disable)
-            {
-                value += (1 << 2);
-            }
-            if(self.decimal_mode)
-            {
-                value += (1 << 3);
-            }
-            if(self.break_cmd)
-            {
-                value += (1 << 4);
-            }
-            if(self.unused)
-            {
-                value += (1 << 5);
-            }
-            if(self.overflow)
-            {
-                value += (1 << 6);
-            }
-            if(self.negative)
-            {
-                value += (1 << 7);
-            }
-            return value;
         }
 
         pub fn set_flag_val_zero(self: *ProcessorStatus, value: u8) void {
@@ -480,37 +522,6 @@ const NesCpu = struct {
     }
 
 };
-
-test "get raw value ProcessorStatus" {
-    var p = NesCpu.ProcessorStatus.init();
-    p.unused = false;
-
-    expect(0 == p.get_raw_value());
-
-    p.carry = true;
-    expect(1 == p.get_raw_value());
-
-    p.zero = true;
-    expect(3 == p.get_raw_value());
-
-    p.interrupt_disable = true;
-    expect(7 == p.get_raw_value());
-
-    p.decimal_mode = true;
-    expect(15 == p.get_raw_value());
-    
-    p.break_cmd = true;
-    expect(31 == p.get_raw_value());
-    
-    p.unused = true;
-    expect(63 == p.get_raw_value());
-    
-    p.overflow = true;
-    expect(127 == p.get_raw_value());
-    
-    p.negative = true;
-    expect(255 == p.get_raw_value());
-}
 
 test "test_5_ops_working_together" {
     var basic_progam = [_]u8{0xA9, 0xC0, 0xAA, 0xE8, 00};
