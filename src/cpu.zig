@@ -44,18 +44,15 @@ const Operation = struct {
         // a register
         build(0xA9, lda, .immediate),
         build(0xA5, lda, .zero_page),
+        build(0xC9, cmp, .immediate),
 
         build(0xAA, tax, .implicit),
 
         // x register
         build(0xE8, inx, .implicit),
-        
         build(0xA2, ldx, .immediate),
-
         build(0xCA, dex, .implicit),
-
         build(0x8E, stx, .absolute),
-
         build(0xE0, cpx, .immediate),
 
         // branching
@@ -83,55 +80,6 @@ const Operation = struct {
         }
         warn("Unknown operation opcode: {x}", .{op_code});
         @panic("Unknown operation for KnownOps.get_operation");
-    }
-    
-    // helpers
-
-    fn register_load_immediate(cpu: *NesCpu, register: *u8) void {
-        register.* = cpu.fetch();
-        cpu.p.set_flags_val_and_neg(register.*);
-    }
-
-    fn register_decrement(cpu: *NesCpu, register: *u8) void {
-        _ = @subWithOverflow(u8, register.*, 1, register);
-    }
-
-    fn register_store_absolute(cpu: *NesCpu, register: *u8, cycling: *bool) void {
-        debug("---> register_store_absolute\n", .{});
-        defer cycling.* = false;
-        
-        var address : u16 = cpu.fetch();
-        suspend; // first part fetch
-
-        address += (@intCast(u16, cpu.fetch()) << 8);
-        suspend; // second part fetch
-    
-        debug("register_store_absolute: store value {x} @{x} \n", .{register.*, address});
-
-        cpu.mem_write_u8(address, register.*);
-        debug("<--- register_store_absolute\n", .{});
-    }
-
-    fn register_compare(cpu: *NesCpu, register_value: u8, compare_value: u8) void {
-        debug("---> register_compare register_value: {x}, compare_value: {x}\n", .{register_value, compare_value});
-        if(register_value >= compare_value) {
-            cpu.p.carry = true;
-        } else {
-            cpu.p.carry = false;
-        }
-        
-        cpu.p.zero = (register_value == compare_value);
-        var cmp_value_calc : u8 = 0;
-        _ = @subWithOverflow(u8, register_value, compare_value, &cmp_value_calc);
-
-        cpu.p.negative = ((cmp_value_calc >> 7) == 1);
-        debug("<--- register_compare carry: {}, zero: {}, cmp_value_calc: {x}, negative: {}\n", .{cpu.p.carry, cpu.p.zero, cmp_value_calc, cpu.p.negative});
-    }
-
-    fn register_compare_immediate(cpu: *NesCpu, register: *u8) void {
-        debug("---> register_compare_immediate\n", .{});
-        register_compare(cpu, register.*, cpu.fetch());
-        debug("<--- register_compare_immediate\n", .{});
     }
 
     // operations
@@ -256,6 +204,55 @@ const Operation = struct {
         suspend;
         suspend;
         debug("<--- brk\n", .{});
+    }
+
+    // helpers
+
+    fn register_load_immediate(cpu: *NesCpu, register: *u8) void {
+        register.* = cpu.fetch();
+        cpu.p.set_flags_val_and_neg(register.*);
+    }
+
+    fn register_decrement(cpu: *NesCpu, register: *u8) void {
+        _ = @subWithOverflow(u8, register.*, 1, register);
+    }
+
+    fn register_store_absolute(cpu: *NesCpu, register: *u8, cycling: *bool) void {
+        debug("---> register_store_absolute\n", .{});
+        defer cycling.* = false;
+        
+        var address : u16 = cpu.fetch();
+        suspend; // first part fetch
+
+        address += (@intCast(u16, cpu.fetch()) << 8);
+        suspend; // second part fetch
+    
+        debug("register_store_absolute: store value {x} @{x} \n", .{register.*, address});
+
+        cpu.mem_write_u8(address, register.*);
+        debug("<--- register_store_absolute\n", .{});
+    }
+
+    fn register_compare(cpu: *NesCpu, register_value: u8, compare_value: u8) void {
+        debug("---> register_compare register_value: {x}, compare_value: {x}\n", .{register_value, compare_value});
+        if(register_value >= compare_value) {
+            cpu.p.carry = true;
+        } else {
+            cpu.p.carry = false;
+        }
+        
+        cpu.p.zero = (register_value == compare_value);
+        var cmp_value_calc : u8 = 0;
+        _ = @subWithOverflow(u8, register_value, compare_value, &cmp_value_calc);
+
+        cpu.p.negative = ((cmp_value_calc >> 7) == 1);
+        debug("<--- register_compare carry: {}, zero: {}, cmp_value_calc: {x}, negative: {}\n", .{cpu.p.carry, cpu.p.zero, cmp_value_calc, cpu.p.negative});
+    }
+
+    fn register_compare_immediate(cpu: *NesCpu, register: *u8) void {
+        debug("---> register_compare_immediate\n", .{});
+        register_compare(cpu, register.*, cpu.fetch());
+        debug("<--- register_compare_immediate\n", .{});
     }
 };
 
