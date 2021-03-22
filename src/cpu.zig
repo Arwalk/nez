@@ -577,5 +577,12 @@ test "Branching from https://skilldrick.github.io/easy6502/" {
     cpu.load_and_interpret(&basic_progam);
 
     expect(cpu.x == 3);
-    expect(cpu.pc == 0x8000 + 0xE);
+}
+
+test "relative adressing" {
+    var basic_program = [_]u8{0xa9, 0x01, 0xc9, 0x02, 0xd0, 0x02, 0x85, 0x22, 0x00};
+    var cpu =  NesCpu.init();
+    cpu.load_and_interpret(&basic_program);
+
+    expect(cpu.a == 1);
 }
