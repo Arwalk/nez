@@ -1,8 +1,8 @@
 const std = @import("std");
 const expect = std.testing.expect;
 const warn = std.log.warn;
+//const debug = std.debug.print;
 const debug = std.log.debug;
-
 
 const Operation = struct {
 
@@ -77,8 +77,9 @@ const Operation = struct {
 
     pub fn get_operation(op_code: u8) Operation {
         for (known_operations) |op| {
-            if(op.op_code_value == op_code)
-            return op;
+            if(op.op_code_value == op_code){
+                return op;
+            }
         }
         warn("Unknown operation opcode: {x}", .{op_code});
         @panic("Unknown operation for KnownOps.get_operation");
@@ -96,6 +97,7 @@ const Operation = struct {
     }
 
     fn register_store_absolute(cpu: *NesCpu, register: *u8, cycling: *bool) void {
+        debug("---> register_store_absolute\n", .{});
         defer cycling.* = false;
         
         var address : u16 = cpu.fetch();
@@ -103,11 +105,15 @@ const Operation = struct {
 
         address += (@intCast(u16, cpu.fetch()) << 8);
         suspend; // second part fetch
+    
+        debug("register_store_absolute: store value {x} @{x} \n", .{register.*, address});
 
         cpu.mem_write_u8(address, register.*);
+        debug("<--- register_store_absolute\n", .{});
     }
 
     fn register_compare(cpu: *NesCpu, register_value: u8, compare_value: u8) void {
+        debug("---> register_compare register_value: {x}, compare_value: {x}\n", .{register_value, compare_value});
         if(register_value >= compare_value) {
             cpu.p.carry = true;
         } else {
@@ -119,35 +125,48 @@ const Operation = struct {
         _ = @subWithOverflow(u8, register_value, compare_value, &cmp_value_calc);
 
         cpu.p.negative = ((cmp_value_calc >> 7) == 1);
+        debug("<--- register_compare carry: {}, zero: {}, cmp_value_calc: {x}, negative: {}\n", .{cpu.p.carry, cpu.p.zero, cmp_value_calc, cpu.p.negative});
     }
 
     fn register_compare_immediate(cpu: *NesCpu, register: *u8) void {
+        debug("---> register_compare_immediate\n", .{});
         register_compare(cpu, register.*, cpu.fetch());
+        debug("<--- register_compare_immediate\n", .{});
     }
 
     // operations
 
     fn bne (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> bne\n", .{});
         defer cycling.* = false;
 
         const relative_addr : i8 = @bitCast(i8, cpu.fetch());
 
         if(!cpu.p.zero) {
             suspend;
-            cpu.pc = @intCast(u16, @intCast(i32, cpu.pc) - @intCast(i32, relative_addr));
+            debug("bne: jumping to {x} bytes in pc\n", .{relative_addr});
+            debug("bne: current pc {x}\n", .{cpu.pc});
+            var pc_as_int = @intCast(i32, cpu.pc);
+            pc_as_int += relative_addr;
+            cpu.pc = @intCast(u16, pc_as_int);
+            debug("bne: new pc {x}\n", .{cpu.pc});
         }
+        debug("<--- bne\n", .{});
     }
 
     fn cpx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> cpx\n", .{});
         defer cycling.* = false;
 
         switch (addressing_mode) {
             .immediate => register_compare_immediate(cpu, &cpu.x),
-            else => @panic("Unknown adresing mode for CPX"),
+            else => @panic("Unknown adressing mode for CPX"),
         }
+        debug("<--- cpx\n", .{});
     }
 
     fn stx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> stx\n", .{});
         defer cycling.* = false;
 
         switch (addressing_mode) {
@@ -161,14 +180,18 @@ const Operation = struct {
 
             else => @panic("Unknown adresing mode for STX"),
         }
+        debug("<--- stx\n", .{});
     }
 
     fn dex (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> dex cpu.x: {x}\n", .{cpu.x});
         defer cycling.* = false;
         register_decrement(cpu, &cpu.x);
+        debug("<--- dex cpu.x: {x}\n", .{cpu.x});
     }
 
     fn ldx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> ldx\n", .{});
         defer cycling.* = false;
 
         switch(addressing_mode) {
@@ -178,24 +201,30 @@ const Operation = struct {
 
             else => @panic("Unknown adresing mode for LDX"),
         }
+        debug("<--- ldx cpu.x: {x}\n", .{cpu.x});
     }
 
     fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> inx x: {}\n", .{cpu.x});
         defer cycling.* = false;
         _ = @addWithOverflow(u8, cpu.x, 1, &cpu.x);
         cpu.p.set_flag_val_neg(cpu.x);
         cpu.p.set_flag_val_zero(cpu.x);
+        debug("<--- inx x: {x}\n", .{cpu.x});
     }
 
     fn tax (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> tax a: {}, x: {}\n", .{cpu.a, cpu.x});
         defer cycling.* = false;
 
         cpu.x = cpu.a;
         cpu.p.set_flag_val_neg(cpu.x);
         cpu.p.set_flag_val_zero(cpu.x);
+        debug("<--- tax x: {x}\n", .{cpu.x});
     }
 
     fn lda (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> lda\n", .{});
         defer cycling.* = false;
         
         switch(addressing_mode){
@@ -207,15 +236,18 @@ const Operation = struct {
             .zero_page => {
                 const addr = cpu.fetch();
                 suspend;
+                debug("lda zero page mode: loading value @{x}", .{addr});
                 cpu.a = cpu.mem_read_u8(addr);
                 cpu.p.set_flags_val_and_neg(cpu.a);
             },
 
             else => @panic("Unknown adresing mode for LDA")
         }
+        debug("<--- lda a: {x}\n", .{cpu.a});
     }
 
     fn brk(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> brk\n", .{});
         defer cycling.* = false;
         suspend;
         suspend;
@@ -223,6 +255,7 @@ const Operation = struct {
         suspend;
         suspend;
         suspend;
+        debug("<--- brk\n", .{});
     }
 };
 
@@ -309,6 +342,10 @@ const NesCpu = struct {
             self.set_flag_val_neg(value);
             self.set_flag_val_zero(value);
         }
+
+        pub fn debug(self: *ProcessorStatus) void {
+            debug("{}", .{self});
+        }
     };
 
     const Internal = struct {
@@ -367,27 +404,30 @@ const NesCpu = struct {
     }
 
     pub fn load(self: *NesCpu, program: []u8) void {
+        debug("--> load\n", .{});
         for (program[0..program.len]) |b, i| self.memory[i + 0x8000] = b;
         self.mem_write_u16(0xFFFC, 0x8000);
-        self.internal.progam_len = program.len;
+        self.internal.progam_len = program.len + 0x8000;
+        debug("<-- load\n", .{});
     }
 
     pub fn reset(self: *NesCpu) void {
+        debug("--> reset\n", .{});
         self.a = 0;
         self.x = 0;
         self.sp = 0;
         self.p = ProcessorStatus.init();
         self.y = 0;
         self.pc = self.mem_read_u16(0xFFFC);
+        debug("<-- reset\n", .{});
     }
 
     fn fetch(self: *NesCpu) u8 {
-        debug("--> fetch", .{});
-        debug("fetching data at index self.pc: {}", .{self.pc});
+        debug("--> fetch self.pc: {x}\n", .{self.pc});
         const val: u8 = self.memory[self.pc];
         self.pc += 1;
         self.internal.fetch_count += 1;
-        debug("<-- fetch {}", .{val});
+        debug("<-- fetch {x}\n", .{val});
         return val;
     }
 
@@ -395,7 +435,7 @@ const NesCpu = struct {
     pub fn start_cpu_frame(self: *NesCpu) void {
         self.internal.progam_running = true;
         defer self.internal.progam_running = false;
-        while(self.internal.fetch_count < self.internal.progam_len){
+        while(self.pc < self.internal.progam_len){
             var internal_frame = async self.cycle();
             suspend;
 
@@ -407,11 +447,13 @@ const NesCpu = struct {
     }
 
     fn cycle(self: *NesCpu) void {
+        debug("--> cycle\n", .{});
         const opcode = self.fetch();
         self.internal.require_new_cycle_frame = false;
         defer self.internal.require_new_cycle_frame = true;
+        debug("<-- cycle\n", .{});
         suspend; // first fetch always costs a cycle
-
+        debug("--> cycle\n", .{});
         const op = Operation.get_operation(opcode);
         var cycling = true;
         
@@ -419,9 +461,12 @@ const NesCpu = struct {
 
         var op_frame = @asyncCall(&bytes, {}, op.op_fn, .{self, op.addressing_mode, &cycling});
         while(cycling) {
+            debug("<-- cycle\n", .{});
             suspend;
+            debug("--> cycle\n", .{});
             resume op_frame;
         }
+        debug("<-- cycle\n", .{});
     }
 
     pub fn interpret(self: *NesCpu) void {
