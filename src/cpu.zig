@@ -70,8 +70,8 @@ const Operation = struct {
         build(0xAD, lda, .absolute),
         build(0xBD, lda, .absolute_x),
         build(0xB9, lda, .absolute_y),
+        // TODO LDA INDEXED X AND INDIRECT Y
         build(0xC9, cmp, .immediate),
-
         build(0xAA, tax, .implicit),
 
         // x register
