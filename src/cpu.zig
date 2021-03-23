@@ -252,7 +252,6 @@ const Operation = struct {
                     debug("lda: adding register value {x} to low_part", .{register});
                     const carry = @addWithOverflow(u8, low_part, register, &low_part);
                     debug("lda: new address low part = {x}", .{low_part});
-                    suspend;
                     if(carry) {
                         debug("lda: page crossed on absolute,[register] adressing", .{});
                         _ = @addWithOverflow(u8, high_part, 1, &high_part);
@@ -388,6 +387,7 @@ const NesCpu = struct {
     };
 
     const Internal = struct {
+        cycle_count: usize,
         fetch_count: usize,
         progam_len: usize,
         require_new_cycle_frame: bool,
@@ -414,6 +414,7 @@ const NesCpu = struct {
             .pc = 0x8000,
             .memory = [_]u8{0} ** 0xFFFF,
             .internal = Internal{
+                .cycle_count = 0,
                 .fetch_count = 0,
                 .progam_len = 0,
                 .progam_running = false,
@@ -473,6 +474,7 @@ const NesCpu = struct {
     
     pub fn start_cpu_frame(self: *NesCpu) void {
         self.internal.progam_running = true;
+        self.internal.cycle_count = 0;
         defer self.internal.progam_running = false;
         while(self.pc < self.internal.progam_len){
             var internal_frame = async self.cycle();
@@ -486,13 +488,14 @@ const NesCpu = struct {
     }
 
     fn cycle(self: *NesCpu) void {
-        debug("--> cycle\n", .{});
+        debug("--> cycle fetch op\n", .{});
         const opcode = self.fetch();
         self.internal.require_new_cycle_frame = false;
         defer self.internal.require_new_cycle_frame = true;
-        debug("<-- cycle\n", .{});
+        self.internal.cycle_count += 1;
+        debug("<-- fetch op cycle\n", .{});
         suspend; // first fetch always costs a cycle
-        debug("--> cycle\n", .{});
+        debug("--> cycle start op\n", .{});
         const op = Operation.get_operation(opcode);
         var cycling = true;
         
@@ -500,12 +503,14 @@ const NesCpu = struct {
 
         var op_frame = @asyncCall(&bytes, {}, op.op_fn, .{self, op.addressing_mode, &cycling});
         while(cycling) {
-            debug("<-- cycle\n", .{});
+            self.internal.cycle_count += 1;
+            debug("<-- cycle continue op\n", .{});
             suspend;
-            debug("--> cycle\n", .{});
+            debug("--> cycle continue op\n", .{});
             resume op_frame;
         }
-        debug("<-- cycle\n", .{});
+        self.internal.cycle_count += 1;
+        debug("<-- cycle end op\n", .{});
     }
 
     pub fn interpret(self: *NesCpu) void {
@@ -573,15 +578,6 @@ test "test_inx_overflow" {
     expect(cpu.x == 1);
 }
 
-test "test_lda_from_memory" {
-    var basic_progam = [_]u8{0xa5, 0x10, 0x00};    
-    var cpu =  NesCpu.init();
-    cpu.mem_write_u8(0x10, 0x55);
-    cpu.load_and_interpret(&basic_progam);
-
-    expect(cpu.a == 0x55);
-}
-
 test "Branching from https://skilldrick.github.io/easy6502/" {
     var basic_progam = [_]u8{0xa2, 0x08, 0xca, 0x8e, 0x00, 0x02, 0xe0, 0x03, 0xd0, 0xf8, 0x8e, 0x01, 0x02, 0x00};
     var cpu =  NesCpu.init();
@@ -591,9 +587,141 @@ test "Branching from https://skilldrick.github.io/easy6502/" {
 }
 
 test "relative adressing" {
-    var basic_program = [_]u8{0xa9, 0x01, 0xc9, 0x02, 0xd0, 0x02, 0x85, 0x22, 0x00};
     var cpu =  NesCpu.init();
+    var basic_program = [_]u8{0xa9, 0x01, 0xc9, 0x02, 0xd0, 0x02, 0x85, 0x22, 0x00};
     cpu.load_and_interpret(&basic_program);
 
     expect(cpu.a == 1);
+}
+
+test "lda" {
+    var cpu =  NesCpu.init();
+
+    cpu.memory[0x0001] = 0x02;
+    cpu.memory[0x0002] = 0x03;
+    cpu.memory[0x0004] = 0x00;
+    cpu.memory[0x0005] = 0x02;
+    cpu.memory[0x0200] = 0xAA;
+    cpu.memory[0x0210] = 0xAB;
+    cpu.memory[0x0300] = 0xBB;
+
+    // immediate mode
+    var lda_immediate = [_]u8{0xA9, 0x01};
+    cpu.load_and_interpret(&lda_immediate);
+    expect(cpu.a == 1);
+    expect(cpu.internal.cycle_count == 2);
+
+
+    // checking flag setting in immediate mode
+    // zero
+    var lda_immediate_flag_0 = [_]u8{0xA9, 0x00};
+    cpu.load_and_interpret(&lda_immediate);
+    expect(cpu.a == 0);
+    expect(cpu.p.zero);
+    expect(!cpu.p.negative);
+    expect(cpu.internal.cycle_count == 2);
+
+    // negative
+    var lda_immediate_flag_0 = [_]u8{0xA9, 0xFE};
+    cpu.load_and_interpret(&lda_immediate);
+    expect(cpu.a == 0xFE);
+    expect(!cpu.p.zero);
+    expect(cpu.p.negative);
+    expect(cpu.internal.cycle_count == 2);
+
+    // neither
+    var lda_immediate_flag_0 = [_]u8{0xA9, 0x05};
+    cpu.load_and_interpret(&lda_immediate);
+    expect(cpu.a == 0x05);
+    expect(!cpu.p.zero);
+    expect(!cpu.p.negative);
+    expect(cpu.internal.cycle_count == 2);
+
+
+    // checking adress modes
+    var lda_zero_page = [_]u8{0xA5, 0x01};
+    cpu.load_and_interpret(&lda_zero_page);
+    expect(cpu.a == 2);
+    expect(cpu.internal.cycle_count == 3);
+
+
+    var lda_zero_page_x = [_]u8{0xB5, 0x01};
+    cpu.load(&lda_zero_page_x);
+    cpu.reset();
+    cpu.x = 0x01;
+    cpu.interpret();
+    expect(cpu.a == 0x03);
+    expect(cpu.internal.cycle_count == 4);
+
+
+    var lda_zero_page_x_wrapparound = [_]u8{0xB5, 0x03};
+    cpu.load(&lda_zero_page_x_wrapparound);
+    cpu.reset();
+    cpu.x = 0xFF;
+    cpu.interpret();
+    expect(cpu.a == 0x03);
+    expect(cpu.internal.cycle_count == 4);
+
+
+    var lda_absolute = [_]u8{0xAD, 0x00, 0x02};
+    cpu.load_and_interpret(&lda_absolute);
+    expect(cpu.a == 0xAA);
+    expect(cpu.internal.cycle_count == 4);
+
+
+    var lda_absolute_x = [_]u8{0xBD, 0x00, 0x02};
+    cpu.load(&lda_absolute_x);
+    cpu.reset();
+    cpu.x = 0x10;
+    cpu.interpret();
+    expect(cpu.a == 0xAB);
+    warn("cyclcount: {}", .{cpu.internal.cycle_count});
+    expect(cpu.internal.cycle_count == 4);
+
+
+    var lda_absolute_x_page_crossed = [_]u8{0xBD, 0xFF, 0x02};
+    cpu.load(&lda_absolute_x_page_crossed);
+    cpu.reset();
+    cpu.x = 0x01;
+    cpu.interpret();
+    expect(cpu.a == 0xBB);
+    expect(cpu.internal.cycle_count == 5);
+
+
+    var lda_absolute_y = [_]u8{0xB9, 0x00, 0x02};
+    cpu.load(&lda_absolute_y);
+    cpu.reset();
+    cpu.y = 0x10;
+    cpu.interpret();
+    expect(cpu.a == 0xAB);
+    expect(cpu.internal.cycle_count == 4);
+
+
+    var lda_absolute_y_page_crossed = [_]u8{0xB9, 0xFF, 0x02};
+    cpu.load(&lda_absolute_y_page_crossed);
+    cpu.reset();
+    cpu.y = 0x01;
+    cpu.interpret();
+    expect(cpu.a == 0xBB);
+    expect(cpu.internal.cycle_count == 5);
+
+
+    var lda_indexed_indirect = [_]u8{0xA1, 0x01};
+    cpu.load(&lda_indexed_indirect);
+    cpu.reset();
+    cpu.x = 0x03; // temp = 0x04, addr = LSB:@0x04=0x00 MSB:@0x05=0x02 -> 0x0200, a = @addr(0x0200) = 0xAA
+    cpu.interpret();
+    expect(cpu.a == 0xAA);
+    expect(cpu.internal.cycle_count == 6);
+    // not doing wrapparound on indexed indirect, it's only for the first calc of param + x
+    
+    for (cpu.memory[0..cpu.memory.len]) |*b| b.* = 0; //resetting memory
+    cpu.memory[0] = 0x80;
+    var lda_indirect_indexed = [_]u8{0xB1, 0x00};
+    cpu.load(&lda_indirect_indexed);
+    cpu.reset();
+    cpu.y = 0x90;
+    cpu.interpret();
+    expect(cpu.a == 0xAA);
+    expect(cpu.internal.cycle_count == 6);
 }
