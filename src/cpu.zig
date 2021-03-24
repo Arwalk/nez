@@ -176,20 +176,6 @@ const Operation = struct {
         debug("<--- dex cpu.x: {x}\n", .{cpu.x});
     }
 
-    fn ldx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
-        debug("---> ldx\n", .{});
-        defer cycling.* = false;
-
-        switch(addressing_mode) {
-            .immediate => {
-                register_load_immediate(cpu, &cpu.x);
-            },
-
-            else => @panic("Unknown adresing mode for LDX"),
-        }
-        debug("<--- ldx cpu.x: {x}\n", .{cpu.x});
-    }
-
     fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> inx x: {}\n", .{cpu.x});
         defer cycling.* = false;
@@ -211,66 +197,124 @@ const Operation = struct {
 
     fn lda (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> lda, adressing: {}, cpu.x: {x}, cpu.y: {x}\n", .{addressing_mode, cpu.x, cpu.y});
+        var load_frame = async register_load(cpu, addressing_mode, &cpu.a, cycling);
+        suspend;
+        while(cycling.*)
+        {
+            resume load_frame;
+            suspend;
+        }
+        debug("<-- lda value: {x}\n", .{cpu.a});
+    }
+
+    fn ldx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> ldx, adressing: {}, cpu.y: {x}\n", .{addressing_mode, cpu.y});
+        var load_frame = async register_load(cpu, addressing_mode, &cpu.x, cycling);
+        suspend;
+        while(cycling.*)
+        {
+            resume load_frame;
+            suspend;
+        }
+        debug("<-- ldx value: {x}\n", .{cpu.x});
+    }
+
+    fn register_load (cpu: *NesCpu, addressing_mode: AdressingMode, register_target: *u8, cycling: *bool) void {
         defer cycling.* = false;
         
         switch(addressing_mode){
             
             .immediate => {
-                register_load_immediate(cpu, &cpu.a);
+                register_load_immediate(cpu, register_target);
             },
             
             .zero_page, .zero_page_x => {
                 var low_part = cpu.fetch();
-                debug("lda: address low part = {x}", .{low_part});
+                debug("register_load: address low part = {x}", .{low_part});
                 suspend; // low part fetch
 
                 if(addressing_mode.is_plus_register()) {
                     const register = addressing_mode.get_register_to_add(cpu);
-                    debug("lda: adding register value {x} to low_part", .{register});
+                    debug("register_load: adding register value {x} to low_part", .{register});
                     const carry = @addWithOverflow(u8, low_part, register, &low_part);
-                    debug("lda: new address low part = {x}", .{low_part});
+                    debug("register_load: new address low part = {x}", .{low_part});
                     suspend;
                 }
 
-                debug("lda: zero page mode: loading value @{x}", .{low_part});
-                cpu.a = cpu.mem_read_u8(low_part);
-                debug("lda: value loaded in a: {x}", .{cpu.a});
-                cpu.p.set_flags_val_and_neg(cpu.a);
+                debug("register_load: zero page mode: loading value @{x}", .{low_part});
+                register_target.* = cpu.mem_read_u8(low_part);
+                debug("register_load: value loaded in register: {x}", .{register_target.*});
+                cpu.p.set_flags_val_and_neg(register_target.*);
             },
 
             .absolute, .absolute_y, .absolute_x => {
                 var low_part = cpu.fetch();
-                debug("lda: address low part = {x}", .{low_part});
+                debug("register_load: address low part = {x}", .{low_part});
                 suspend; // low part fetch
 
                 var high_part = cpu.fetch();
-                debug("lda: address high part = {}", .{high_part});
+                debug("register_load: address high part = {}", .{high_part});
                 suspend; // hi part fetch
 
                 if(addressing_mode.is_plus_register()) {
                     const register = addressing_mode.get_register_to_add(cpu);
-                    debug("lda: adding register value {x} to low_part", .{register});
+                    debug("register_load: adding register value {x} to low_part", .{register});
                     const carry = @addWithOverflow(u8, low_part, register, &low_part);
-                    debug("lda: new address low part = {x}", .{low_part});
+                    debug("register_load: new address low part = {x}", .{low_part});
                     if(carry) {
-                        debug("lda: page crossed on absolute,[register] adressing", .{});
+                        debug("register_load: page crossed on absolute,[register] adressing", .{});
                         _ = @addWithOverflow(u8, high_part, 1, &high_part);
-                        debug("lda: new address high part = {}", .{high_part});
+                        debug("register_load: new address high part = {}", .{high_part});
                         suspend;
                     }
                 }
 
                 const addr = low_part + (@intCast(u16, high_part) << 8);
 
-                debug("lda: zero page mode: loading value @{x}", .{addr});
-                cpu.a = cpu.mem_read_u8(addr);
-                debug("lda: value loaded in a: {x}", .{cpu.a});
-                cpu.p.set_flags_val_and_neg(cpu.a);
+                debug("register_load: zero page mode: loading value @{x}", .{addr});
+                register_target.* = cpu.mem_read_u8(addr);
+                debug("register_load: value loaded in register: {x}", .{register_target.*});
             },
 
-            else => @panic("Unknown adressing mode for LDA")
+            .indexed_indirect => {
+                var param = cpu.fetch();
+                debug("register_load: indeXed indirect param = {x}", .{param});
+                suspend;
+
+                _ = @addWithOverflow(u8, param, cpu.x, &param);
+                suspend;
+
+                const address = cpu.mem_read_u16(param);
+                suspend;
+                suspend;
+
+                register_target.* = cpu.memory[address];
+            },
+
+            .indirect_indexed => {
+                var param = cpu.fetch();
+                debug("register_load: indirect indexed param = {x}", .{param});
+                suspend;
+
+                var address_lsb = cpu.mem_read_u8(param);
+                const carry = @addWithOverflow(u8, address_lsb, cpu.y, &address_lsb);
+                suspend;
+
+                var address_msb = cpu.mem_read_u8(param+1);
+                suspend;
+
+                if(carry) {
+                    address_msb += 1;
+                    suspend;
+                }
+
+                const address : u16 = address_lsb + (@intCast(u16, address_msb) << 8); 
+                register_target.* = cpu.memory[address];
+            },
+
+            else => @panic("Unknown adressing mode for register_load")
         }
-        debug("<--- lda a: {x}\n", .{cpu.a});
+        cpu.p.set_flags_val_and_neg(register_target.*);
     }
 
     fn brk(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
@@ -289,7 +333,6 @@ const Operation = struct {
 
     fn register_load_immediate(cpu: *NesCpu, register: *u8) void {
         register.* = cpu.fetch();
-        cpu.p.set_flags_val_and_neg(register.*);
     }
 
     fn register_decrement(cpu: *NesCpu, register: *u8) void {
