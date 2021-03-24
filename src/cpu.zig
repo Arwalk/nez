@@ -85,9 +85,12 @@ const Operation = struct {
         build(0xAC, ldy, .absolute),
         build(0xBC, ldy, .absolute_x),
 
+        // increment
+        build(0xE8, inx, .implicit),
+        build(0xC8, inx, .implicit),
+
         build(0xC9, cmp, .immediate),
         build(0xAA, tax, .implicit),
-        build(0xE8, inx, .implicit),
         build(0xCA, dex, .implicit),
         build(0x8E, stx, .absolute),
         build(0xE0, cpx, .immediate),
@@ -192,6 +195,15 @@ const Operation = struct {
         cpu.p.set_flag_val_neg(cpu.x);
         cpu.p.set_flag_val_zero(cpu.x);
         debug("<--- inx x: {x}\n", .{cpu.x});
+    }
+
+    fn iny (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> inx x: {}\n", .{cpu.y});
+        defer cycling.* = false;
+        _ = @addWithOverflow(u8, cpu.y, 1, &cpu.y);
+        cpu.p.set_flag_val_neg(cpu.y);
+        cpu.p.set_flag_val_zero(cpu.y);
+        debug("<--- inx x: {x}\n", .{cpu.y});
     }
 
     fn tax (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
