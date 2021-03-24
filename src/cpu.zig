@@ -63,25 +63,34 @@ const Operation = struct {
     const known_operations = [_]Operation{
         build(0x00, brk, .implicit),
 
-        // a register
+        // load register
         build(0xA9, lda, .immediate),
         build(0xA5, lda, .zero_page),
         build(0xB5, lda, .zero_page_x),
         build(0xAD, lda, .absolute),
         build(0xBD, lda, .absolute_x),
         build(0xB9, lda, .absolute_y),
-        // TODO LDA INDEXED X AND INDIRECT Y
+        build(0xA1, lda, .indexed_indirect),
+        build(0xB1, lda, .indirect_indexed),
+
+        build(0xA2, ldx, .immediate),
+        build(0xA6, ldx, .zero_page),
+        build(0xB6, ldx, .zero_page_y),
+        build(0xAE, ldx, .absolute),
+        build(0xBE, ldx, .absolute_y),
+        
+        build(0xA0, ldy, .immediate),
+        build(0xA4, ldy, .zero_page),
+        build(0xB4, ldy, .zero_page_x),
+        build(0xAC, ldy, .absolute),
+        build(0xBC, ldy, .absolute_x),
+
         build(0xC9, cmp, .immediate),
         build(0xAA, tax, .implicit),
-
-        // x register
         build(0xE8, inx, .implicit),
-        build(0xA2, ldx, .immediate),
         build(0xCA, dex, .implicit),
         build(0x8E, stx, .absolute),
         build(0xE0, cpx, .immediate),
-
-        // branching
         build(0xD0, bne, .relative),
     };
 
@@ -219,16 +228,28 @@ const Operation = struct {
         debug("<-- ldx value: {x}\n", .{cpu.x});
     }
 
+    fn ldy (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> ldy, adressing: {}, cpu.x: {x}\n", .{addressing_mode, cpu.x});
+        var load_frame = async register_load(cpu, addressing_mode, &cpu.y, cycling);
+        suspend;
+        while(cycling.*)
+        {
+            resume load_frame;
+            suspend;
+        }
+        debug("<-- ldy value: {x}\n", .{cpu.y});
+    }
+
     fn register_load (cpu: *NesCpu, addressing_mode: AdressingMode, register_target: *u8, cycling: *bool) void {
         defer cycling.* = false;
         
         switch(addressing_mode){
             
             .immediate => {
-                register_load_immediate(cpu, register_target);
+                register_target.* = cpu.fetch();
             },
             
-            .zero_page, .zero_page_x => {
+            .zero_page, .zero_page_x, .zero_page_y => {
                 var low_part = cpu.fetch();
                 debug("register_load: address low part = {x}", .{low_part});
                 suspend; // low part fetch
@@ -314,7 +335,7 @@ const Operation = struct {
                 const address : u16 = address_lsb + (@intCast(u16, address_msb) << 8); 
                 debug("register_load: address is now {x}", .{address});
                 register_target.* = cpu.memory[address];
-                debug("register_load: register value loaded from @address", .{register_target.*});
+                debug("register_load: register value loaded from @address = {}", .{register_target.*});
             },
 
             else => @panic("Unknown adressing mode for register_load")
@@ -335,10 +356,6 @@ const Operation = struct {
     }
 
     // helpers
-
-    fn register_load_immediate(cpu: *NesCpu, register: *u8) void {
-        register.* = cpu.fetch();
-    }
 
     fn register_decrement(cpu: *NesCpu, register: *u8) void {
         _ = @subWithOverflow(u8, register.*, 1, register);
