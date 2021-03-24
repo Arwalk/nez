@@ -319,10 +319,13 @@ const Operation = struct {
                 suspend;
 
                 var address_lsb = cpu.mem_read_u8(param);
+                debug("register_load: address lsb for indirect indexed @param: {x}", .{address_lsb});
                 const carry = @addWithOverflow(u8, address_lsb, cpu.y, &address_lsb);
+                debug("register_load: address lsb + y = {}, carry = {}", .{address_lsb, carry});
                 suspend;
 
                 var address_msb = cpu.mem_read_u8(param+1);
+                debug("register_load: address msb for indirect indexed @param+1: {x}", .{address_msb});
                 suspend;
 
                 if(carry) {
@@ -332,7 +335,9 @@ const Operation = struct {
                 }
 
                 const address : u16 = address_lsb + (@intCast(u16, address_msb) << 8); 
+                debug("register_load: address is now {x}", .{address});
                 register_target.* = cpu.memory[address];
+                debug("register_load: register value loaded from @address", .{register_target.*});
             },
 
             else => @panic("Unknown adressing mode for register_load")
