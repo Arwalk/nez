@@ -692,23 +692,23 @@ test "lda" {
     // checking flag setting in immediate mode
     // zero
     var lda_immediate_flag_0 = [_]u8{0xA9, 0x00};
-    cpu.load_and_interpret(&lda_immediate);
+    cpu.load_and_interpret(&lda_immediate_flag_0);
     expect(cpu.a == 0);
     expect(cpu.p.zero);
     expect(!cpu.p.negative);
     expect(cpu.internal.cycle_count == 2);
 
     // negative
-    var lda_immediate_flag_0 = [_]u8{0xA9, 0xFE};
-    cpu.load_and_interpret(&lda_immediate);
+    var lda_immediate_flag_neg = [_]u8{0xA9, 0xFE};
+    cpu.load_and_interpret(&lda_immediate_flag_neg);
     expect(cpu.a == 0xFE);
     expect(!cpu.p.zero);
     expect(cpu.p.negative);
     expect(cpu.internal.cycle_count == 2);
 
     // neither
-    var lda_immediate_flag_0 = [_]u8{0xA9, 0x05};
-    cpu.load_and_interpret(&lda_immediate);
+    var lda_immediate_flag_default = [_]u8{0xA9, 0x05};
+    cpu.load_and_interpret(&lda_immediate_flag_default);
     expect(cpu.a == 0x05);
     expect(!cpu.p.zero);
     expect(!cpu.p.negative);
