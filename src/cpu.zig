@@ -244,7 +244,6 @@ const Operation = struct {
                 debug("register_load: zero page mode: loading value @{x}", .{low_part});
                 register_target.* = cpu.mem_read_u8(low_part);
                 debug("register_load: value loaded in register: {x}", .{register_target.*});
-                cpu.p.set_flags_val_and_neg(register_target.*);
             },
 
             .absolute, .absolute_y, .absolute_x => {
