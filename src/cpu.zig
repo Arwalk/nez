@@ -242,18 +242,6 @@ const Operation = struct {
         debug("<-- ldx value: {x}\n", .{cpu.x});
     }
 
-    fn ldy (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
-        debug("---> ldy, adressing: {}, cpu.x: {x}\n", .{addressing_mode, cpu.x});
-        var load_frame = async register_load(cpu, addressing_mode, &cpu.y, cycling);
-        suspend;
-        while(cycling.*)
-        {
-            resume load_frame;
-            suspend;
-        }
-        debug("<-- ldy value: {x}\n", .{cpu.y});
-    }
-
     fn register_load (cpu: *NesCpu, addressing_mode: AdressingMode, register_target: *u8, cycling: *bool) void {
         defer cycling.* = false;
         
@@ -325,24 +313,9 @@ const Operation = struct {
                 register_target.* = cpu.memory[address];
             },
 
-            .indexed_indirect => {
-                var param = cpu.fetch();
-                debug("lda: indeXed indirect param = {x}", .{param});
-                suspend;
-
-                _ = @addWithOverflow(u8, param, cpu.x, &param);
-                suspend;
-
-                const address = cpu.mem_read_u16(param);
-                suspend;
-                suspend;
-
-                cpu.a = cpu.memory[address];
-            },
-
             .indirect_indexed => {
                 var param = cpu.fetch();
-                debug("lda: indirect indexed param = {x}", .{param});
+                debug("register_load: indirect indexed param = {x}", .{param});
                 suspend;
 
                 var address_lsb = cpu.mem_read_u8(param);
@@ -359,10 +332,10 @@ const Operation = struct {
                 }
 
                 const address : u16 = address_lsb + (@intCast(u16, address_msb) << 8); 
-                cpu.a = cpu.memory[address];
+                register_target.* = cpu.memory[address];
             },
 
-            else => @panic("Unknown adressing mode for LDA")
+            else => @panic("Unknown adressing mode for register_load")
         }
         cpu.p.set_flags_val_and_neg(register_target.*);
     }
