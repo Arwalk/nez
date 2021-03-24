@@ -783,21 +783,43 @@ test "lda" {
     expect(cpu.internal.cycle_count == 5);
 
 
-    var lda_indexed_indirect = [_]u8{0xA1, 0x01};
+    for (cpu.memory) |*b| b.* = 0; //resetting memory
+    var lda_indexed_indirect = [_]u8{0xa1, 0x00};
     cpu.load(&lda_indexed_indirect);
     cpu.reset();
-    cpu.x = 0x03; // temp = 0x04, addr = LSB:@0x04=0x00 MSB:@0x05=0x02 -> 0x0200, a = @addr(0x0200) = 0xAA
+    cpu.memory[0x0705] = 0xAA;
+    cpu.memory[0x0001] = 0x05;
+    cpu.memory[0x0002] = 0x07;
+    cpu.x = 0x01;
     cpu.interpret();
     expect(cpu.a == 0xAA);
     expect(cpu.internal.cycle_count == 6);
-    // not doing wrapparound on indexed indirect, it's only for the first calc of param + x
+    // basically: param + x = 0x0001. u16 @ 0x0001 = 0x0705, so load value @0x0705 in LDA.
+    // fetch op -> fetch param -> calc param +x (wrapparound u8) -> fetch lsb address-> fetch msb address-> load lda w/ @address
+    //not doing wrapparound, its on param + x, easy to handle.
     
-    for (cpu.memory[0..cpu.memory.len]) |*b| b.* = 0; //resetting memory
-    cpu.memory[0] = 0x80;
-    var lda_indirect_indexed = [_]u8{0xB1, 0x00};
+
+    for (cpu.memory) |*b| b.* = 0; //resetting memory
+    var lda_indirect_indexed = [_]u8{0xB1, 0x01};
     cpu.load(&lda_indirect_indexed);
     cpu.reset();
-    cpu.y = 0x90;
+    cpu.memory[0x0203] = 0xAA;
+    cpu.memory[0x0001] = 0x00;
+    cpu.memory[0x0002] = 0x02;
+    cpu.y = 0x03;
+    cpu.interpret();
+    expect(cpu.a == 0xAA);
+    expect(cpu.internal.cycle_count == 5);
+    // fetch op -> fetch param -> fetch lsb address + y (+1 if wrapparound) -> fetch msb address -> load lda w/ @address
+
+    for (cpu.memory) |*b| b.* = 0; //resetting memory
+    var lda_indirect_indexed_page_crossed = [_]u8{0xB1, 0x01};
+    cpu.load(&lda_indirect_indexed_page_crossed);
+    cpu.reset();
+    cpu.memory[0x0301] = 0xAA;
+    cpu.memory[0x0001] = 0x02;
+    cpu.memory[0x0002] = 0x02;
+    cpu.y = 0xFF;
     cpu.interpret();
     expect(cpu.a == 0xAA);
     expect(cpu.internal.cycle_count == 6);
