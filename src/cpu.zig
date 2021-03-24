@@ -72,6 +72,8 @@ const Operation = struct {
         build(0xB9, lda, .absolute_y),
         build(0xA1, lda, .indexed_indirect),
         build(0xB1, lda, .indirect_indexed),
+        build(0xC9, cmp, .immediate),
+        build(0xAA, tax, .implicit),
 
         build(0xA2, ldx, .immediate),
         build(0xA6, ldx, .zero_page),
@@ -323,19 +325,31 @@ const Operation = struct {
                 register_target.* = cpu.memory[address];
             },
 
+            .indexed_indirect => {
+                var param = cpu.fetch();
+                debug("lda: indeXed indirect param = {x}", .{param});
+                suspend;
+
+                _ = @addWithOverflow(u8, param, cpu.x, &param);
+                suspend;
+
+                const address = cpu.mem_read_u16(param);
+                suspend;
+                suspend;
+
+                cpu.a = cpu.memory[address];
+            },
+
             .indirect_indexed => {
                 var param = cpu.fetch();
-                debug("register_load: indirect indexed param = {x}", .{param});
+                debug("lda: indirect indexed param = {x}", .{param});
                 suspend;
 
                 var address_lsb = cpu.mem_read_u8(param);
-                debug("register_load: address lsb for indirect indexed @param: {x}", .{address_lsb});
                 const carry = @addWithOverflow(u8, address_lsb, cpu.y, &address_lsb);
-                debug("register_load: address lsb + y = {}, carry = {}", .{address_lsb, carry});
                 suspend;
 
                 var address_msb = cpu.mem_read_u8(param+1);
-                debug("register_load: address msb for indirect indexed @param+1: {x}", .{address_msb});
                 suspend;
 
                 if(carry) {
@@ -345,12 +359,10 @@ const Operation = struct {
                 }
 
                 const address : u16 = address_lsb + (@intCast(u16, address_msb) << 8); 
-                debug("register_load: address is now {x}", .{address});
-                register_target.* = cpu.memory[address];
-                debug("register_load: register value loaded from @address = {}", .{register_target.*});
+                cpu.a = cpu.memory[address];
             },
 
-            else => @panic("Unknown adressing mode for register_load")
+            else => @panic("Unknown adressing mode for LDA")
         }
         cpu.p.set_flags_val_and_neg(register_target.*);
     }
@@ -752,7 +764,6 @@ test "lda" {
     cpu.x = 0x10;
     cpu.interpret();
     expect(cpu.a == 0xAB);
-    warn("cyclcount: {}", .{cpu.internal.cycle_count});
     expect(cpu.internal.cycle_count == 4);
 
 
