@@ -1,4 +1,5 @@
 const std = @import("std");
+const Int = std.meta.Int;
 const expect = std.testing.expect;
 const warn = std.log.warn;
 //const debug = std.debug.print;
@@ -265,7 +266,7 @@ const Operation = struct {
                 }
 
                 debug("register_load: zero page mode: loading value @{x}", .{low_part});
-                register_target.* = cpu.mem_read_u8(low_part);
+                register_target.* = cpu.mem_read(u8, low_part);
                 debug("register_load: value loaded in register: {x}", .{register_target.*});
             },
 
@@ -294,7 +295,7 @@ const Operation = struct {
                 const addr = low_part + (@intCast(u16, high_part) << 8);
 
                 debug("register_load: zero page mode: loading value @{x}", .{addr});
-                register_target.* = cpu.mem_read_u8(addr);
+                register_target.* = cpu.mem_read(u8, addr);
                 debug("register_load: value loaded in register: {x}", .{register_target.*});
             },
 
@@ -306,7 +307,7 @@ const Operation = struct {
                 _ = @addWithOverflow(u8, param, cpu.x, &param);
                 suspend;
 
-                const address = cpu.mem_read_u16(param);
+                const address = cpu.mem_read(u16, param);
                 suspend;
                 suspend;
 
@@ -318,13 +319,13 @@ const Operation = struct {
                 debug("register_load: indirect indexed param = {x}", .{param});
                 suspend;
 
-                var address_lsb = cpu.mem_read_u8(param);
+                var address_lsb = cpu.mem_read(u8, param);
                 debug("register_load: address lsb for indirect indexed @param: {x}", .{address_lsb});
                 const carry = @addWithOverflow(u8, address_lsb, cpu.y, &address_lsb);
                 debug("register_load: address lsb + y = {}, carry = {}", .{address_lsb, carry});
                 suspend;
 
-                var address_msb = cpu.mem_read_u8(param+1);
+                var address_msb = cpu.mem_read(u8, param+1);
                 debug("register_load: address msb for indirect indexed @param+1: {x}", .{address_msb});
                 suspend;
 
@@ -493,25 +494,41 @@ const NesCpu = struct {
 
     fn mem_write(self: *NesCpu, comptime T: type, address: u16, value: T) void {
         comptime {
+            expect(@bitSizeOf(T) >= 8);
             expect((@bitSizeOf(T) % 8) == 0);
         }
+
         var index : u16 = 0;
         var val = value;
-        const num_shifts : u8 = @bitSizeOf(T) / 8;
+        comptime const num_shifts : u8 = @bitSizeOf(T) / 8;
+        
         while (index < num_shifts) : (index += 1) {
             self.memory[address + index] = @intCast(u8, val & 0xFF);
             val = @intCast(T, @intCast(usize, value) >> 8);
         }
     }
 
-    fn mem_read_u16(self: *NesCpu, addr: u16) u16 {
-        var val : u16 = self.memory[addr];
-        val += (@intCast(u16, self.memory[addr+1]) << 8);
-        return val;
-    }
+    fn mem_read(self: *NesCpu, comptime T: type, address: u16) T {
+        comptime {
+            expect(@bitSizeOf(T) >= 8);
+            expect((@bitSizeOf(T) % 8) == 0);
+        }
 
-    fn mem_read_u8(self: *NesCpu, addr: u16) u8 {
-        return self.memory[addr];
+        comptime const num_bytes : u3 = @bitSizeOf(T) / 8;
+        var value : T = 0;
+        comptime var index: u4 = 1;
+        comptime const bitshift: u4 = 8;
+
+        value = self.memory[address];
+
+        inline while (index < num_bytes) : (index += 1) {
+            var temp : T = 0;
+            temp = self.memory[address + index];
+            temp <<= (index * bitshift);
+            value += temp;
+        }
+
+        return value;
     }
 
     pub fn load(self: *NesCpu, program: []u8) void {
@@ -529,7 +546,7 @@ const NesCpu = struct {
         self.sp = 0;
         self.p = ProcessorStatus.init();
         self.y = 0;
-        self.pc = self.mem_read_u16(0xFFFC);
+        self.pc = self.mem_read(u16, 0xFFFC);
         debug("<-- reset\n", .{});
     }
 
