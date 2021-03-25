@@ -337,7 +337,7 @@ const Operation = struct {
                 const address : u16 = address_lsb + (@intCast(u16, address_msb) << 8); 
                 debug("register_load: address is now {x}", .{address});
                 register_target.* = cpu.memory[address];
-                debug("register_load: register value loaded from @address", .{register_target.*});
+                debug("register_load: register value loaded from @address {}", .{register_target.*});
             },
 
             else => @panic("Unknown adressing mode for register_load")
@@ -375,7 +375,7 @@ const Operation = struct {
     
         debug("register_store_absolute: store value {x} @{x} \n", .{register.*, address});
 
-        cpu.mem_write_u8(address, register.*);
+        cpu.mem_write(u8, address, register.*);
         debug("<--- register_store_absolute\n", .{});
     }
 
@@ -491,13 +491,17 @@ const NesCpu = struct {
         return nescpu;
     }
 
-    fn mem_write_u16(self: *NesCpu, addr: u16, val: u16) void {
-        self.memory[addr] = @intCast(u8, val & 0xFF);
-        self.memory[addr+1] = @intCast(u8, val >> 8);
-    }
-
-    fn mem_write_u8(self: *NesCpu, addr: u16, val: u8) void {
-        self.memory[addr] = val;
+    fn mem_write(self: *NesCpu, comptime T: type, address: u16, value: T) void {
+        comptime {
+            expect((@bitSizeOf(T) % 8) == 0);
+        }
+        var index : u16 = 0;
+        var val = value;
+        const num_shifts : u8 = @bitSizeOf(T) / 8;
+        while (index < num_shifts) : (index += 1) {
+            self.memory[address + index] = @intCast(u8, val & 0xFF);
+            val = @intCast(T, @intCast(usize, value) >> 8);
+        }
     }
 
     fn mem_read_u16(self: *NesCpu, addr: u16) u16 {
@@ -513,7 +517,7 @@ const NesCpu = struct {
     pub fn load(self: *NesCpu, program: []u8) void {
         debug("--> load\n", .{});
         for (program[0..program.len]) |b, i| self.memory[i + 0x8000] = b;
-        self.mem_write_u16(0xFFFC, 0x8000);
+        self.mem_write(u16, 0xFFFC, 0x8000);
         self.internal.progam_len = program.len + 0x8000;
         debug("<-- load\n", .{});
     }
