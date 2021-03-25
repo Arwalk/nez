@@ -243,6 +243,18 @@ const Operation = struct {
         debug("<-- ldx value: {x}\n", .{cpu.x});
     }
 
+    fn ldy (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> ldy, adressing: {}, cpu.x: {x}\n", .{addressing_mode, cpu.x});
+        var load_frame = async register_load(cpu, addressing_mode, &cpu.y, cycling);
+        suspend;
+        while(cycling.*)
+        {
+            resume load_frame;
+            suspend;
+        }
+        debug("<-- ldy value: {x}\n", .{cpu.y});
+    }
+
     fn register_load (cpu: *NesCpu, addressing_mode: AdressingMode, register_target: *u8, cycling: *bool) void {
         defer cycling.* = false;
         
