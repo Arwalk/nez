@@ -87,7 +87,7 @@ const Operation = struct {
 
         // increment
         build(0xE8, inx, .implicit),
-        build(0xC8, inx, .implicit),
+        build(0xC8, iny, .implicit),
 
         build(0xC9, cmp, .immediate),
         build(0xAA, tax, .implicit),
