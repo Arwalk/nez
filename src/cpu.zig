@@ -73,8 +73,6 @@ const Operation = struct {
         build(0xB9, lda, .absolute_y),
         build(0xA1, lda, .indexed_indirect),
         build(0xB1, lda, .indirect_indexed),
-        build(0xC9, cmp, .immediate),
-        build(0xAA, tax, .implicit),
 
         build(0xA2, ldx, .immediate),
         build(0xA6, ldx, .zero_page),
