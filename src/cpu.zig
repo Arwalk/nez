@@ -90,10 +90,14 @@ const Operation = struct {
         build(0xE8, inx, .implicit),
         build(0xC8, iny, .implicit),
 
+        // store register
+        build(0x8E, stx, .absolute),
+        build(0x86, stx, .zero_page),
+        build(0x96, stx, .zero_page_y),
+
         build(0xC9, cmp, .immediate),
         build(0xAA, tax, .implicit),
         build(0xCA, dex, .implicit),
-        build(0x8E, stx, .absolute),
         build(0xE0, cpx, .immediate),
         build(0xD0, bne, .relative),
     };
@@ -166,19 +170,21 @@ const Operation = struct {
 
     fn stx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> stx\n", .{});
-        defer cycling.* = false;
-
-        switch (addressing_mode) {
-            .absolute => {
-                var store_frame = async register_store_absolute(cpu, &cpu.x, cycling);
+        switch(addressing_mode) {
+            .absolute, .zero_page, .zero_page_y => {
+                var store_frame = async register_store(cpu, &cpu.x, addressing_mode, cycling);
                 while(cycling.*) {
                     suspend;
                     resume store_frame;
                 }
             },
 
-            else => @panic("Unknown adresing mode for STX"),
+            else => {
+                warn("Unknown adressing mode {x} for stx", .{addressing_mode});
+                @panic("Invalid use of stx function");
+            }
         }
+        
         debug("<--- stx\n", .{});
     }
 
@@ -374,20 +380,54 @@ const Operation = struct {
         _ = @subWithOverflow(u8, register.*, 1, register);
     }
 
-    fn register_store_absolute(cpu: *NesCpu, register: *u8, cycling: *bool) void {
-        debug("---> register_store_absolute\n", .{});
+    fn get_address(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool, out_address: *u16) void {
         defer cycling.* = false;
-        
-        var address : u16 = cpu.fetch();
-        suspend; // low part fetch
+        out_address.* = 0;
 
-        address += (@intCast(u16, cpu.fetch()) << 8);
-        suspend; // high part fetch
-    
-        debug("register_store_absolute: store value {x} @{x} \n", .{register.*, address});
+        switch(addressing_mode) {
+            .absolute => {
+                out_address.* = cpu.fetch();
+                suspend; // low part fetch
+
+                out_address.* += (@intCast(u16, cpu.fetch()) << 8);
+                suspend; // high part fetch
+            },
+
+            .zero_page, .zero_page_y, .zero_page_x => {
+                out_address.* = cpu.fetch();
+                suspend;
+
+                if(addressing_mode.is_plus_register()) {
+                    const register_to_add = addressing_mode.get_register_to_add(cpu);
+                    out_address.* = (out_address.* + register_to_add) & 0xFF;
+                    suspend;
+                }
+            },  
+
+            else => {
+                warn("adressing mode {} not implemented yet", .{addressing_mode});
+                @panic("Error in get_address");
+            }
+        }
+        debug("get_address: {x}", .{out_address.*});
+    }
+
+    fn register_store(cpu: *NesCpu, register: *u8, addressing_mode: AdressingMode, cycling: *bool) void {
+        debug("---> register_store adressing: {}\n", .{addressing_mode});
+        defer cycling.* = false;
+        var address : u16 = 0;
+        
+        var get_address_cycling = true;
+        var get_address_frame = async get_address(cpu, addressing_mode, &get_address_cycling, &address);
+        
+        while(get_address_cycling) {
+            suspend;
+            resume get_address_frame;
+        }
 
         cpu.mem_write(u8, address, register.*);
-        debug("<--- register_store_absolute\n", .{});
+        
+        debug("<--- register_store\n", .{});
     }
 
     fn register_compare(cpu: *NesCpu, register_value: u8, compare_value: u8) void {
@@ -843,4 +883,31 @@ test "lda" {
     cpu.interpret();
     expect(cpu.a == 0xAA);
     expect(cpu.internal.cycle_count == 6);
+}
+
+test "stx" {
+    var cpu =  NesCpu.init();
+
+    var stx_zero_page = [_]u8{0x86, 0x50};
+    cpu.load(&stx_zero_page);
+    cpu.reset();
+    cpu.x = 0xAA;
+    cpu.interpret();
+    expect(cpu.memory[0x50] == 0xAA);
+
+    var stx_zero_page_y = [_]u8{0x96, 0x50};
+    cpu.load(&stx_zero_page_y);
+    cpu.reset();
+    cpu.x = 0xBB;
+    cpu.y = 0x05;
+    cpu.interpret();
+    expect(cpu.memory[0x55] == 0xBB);
+
+    // with wrapparound
+    cpu.load(&stx_zero_page_y);
+    cpu.reset();
+    cpu.x = 0xCC;
+    cpu.y = 0xB2;
+    cpu.interpret();
+    expect(cpu.memory[0x02] == 0xCC);
 }
