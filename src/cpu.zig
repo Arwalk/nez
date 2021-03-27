@@ -63,6 +63,7 @@ const Operation = struct {
 
     const known_operations = [_]Operation{
         build(0x00, brk, .implicit),
+        build(0xEA, nop, .implicit),
 
         // load register
         build(0xA9, lda, .immediate),
@@ -126,6 +127,9 @@ const Operation = struct {
     }
 
     // operations
+    fn nop (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        cycling.* = false;
+    }
 
     fn cmp (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> cmp\n", .{});
