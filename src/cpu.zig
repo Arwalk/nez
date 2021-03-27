@@ -88,6 +88,11 @@ const Operation = struct {
         build(0xBC, ldy, .absolute_x),
 
         // increment
+        build(0xE6, inc, .zero_page),
+        build(0xF6, inc, .zero_page_x),
+        build(0xEE, inc, .absolute),
+        build(0xFE, inc, .absolute_x),
+
         build(0xE8, inx, .implicit),
         build(0xC8, iny, .implicit),
 
@@ -898,6 +903,7 @@ test "stx" {
     cpu.x = 0xAA;
     cpu.interpret();
     expect(cpu.memory[0x50] == 0xAA);
+    expect(cpu.internal.cycle_count == 3);
 
     var stx_zero_page_y = [_]u8{0x96, 0x50};
     cpu.load(&stx_zero_page_y);
@@ -906,6 +912,7 @@ test "stx" {
     cpu.y = 0x05;
     cpu.interpret();
     expect(cpu.memory[0x55] == 0xBB);
+    expect(cpu.internal.cycle_count == 4);
 
     // with wrapparound
     cpu.load(&stx_zero_page_y);
@@ -914,4 +921,41 @@ test "stx" {
     cpu.y = 0xB2;
     cpu.interpret();
     expect(cpu.memory[0x02] == 0xCC);
+    expect(cpu.internal.cycle_count == 4);
+}
+
+test "inc" {
+    var cpu =  NesCpu.init();
+
+    var zero_page = [_]u8{0xE6, 0x20};
+    cpu.load_and_interpret(&zero_page);
+    expect(cpu.memory[0x0020] == 1);
+    expect(cpu.internal.cycle_count == 5);
+
+    // with overflow
+    cpu.memory[0x0020] = 0xFF;
+    cpu.load_and_interpret(&zero_page);
+    expect(cpu.memory[0x0020] == 0);
+    expect(cpu.internal.cycle_count == 5);
+
+    var zero_page_x = [_]u8{0xF6, 0x20};
+    cpu.load(&zero_page_x);
+    cpu.reset();
+    cpu.x = 0x05;
+    cpu.interpret();
+    expect(cpu.memory[0x0025] == 1);
+    expect(cpu.internal.cycle_count == 6);
+
+    var absolute = [_]u8{0xEE, 0x50, 0x10};
+    cpu.load_and_interpret(&absolute);
+    expect(cpu.memory[0x1050] == 1);
+    expect(cpu.internal.cycle_count == 6);
+
+    var absolute_x = [_]u8{0xFE, 0x50, 0x10};
+    cpu.load(&absolute_x);
+    cpu.reset();
+    cpu.x = 0x05;
+    cpu.interpret();
+    expect(cpu.memory[0x1055] == 1);
+    expect(cpu.internal.cycle_count == 7);
 }
