@@ -59,10 +59,6 @@ const Operation = struct {
             .op_fn = op_fn,
             .addressing_mode = addressing_mode,
         };
-    }
-
-    pub fn copy(to_copy : *const Operation) Operation {
-        return build(to_copy.op_code_value, to_copy.op_fn, to_copy.addressing_mode);
     } 
 
     const known_operations = [_]Operation{
