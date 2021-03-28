@@ -96,6 +96,10 @@ const Operation = struct {
         build(0xE8, inx, .implicit),
         build(0xC8, iny, .implicit),
 
+        // decrement
+        build(0xCA, dex, .implicit),
+        build(0x88, dey, .implicit),
+
         // store register
         build(0x8E, stx, .absolute),
         build(0x86, stx, .zero_page),
@@ -113,7 +117,6 @@ const Operation = struct {
 
         build(0xC9, cmp, .immediate),
         build(0xAA, tax, .implicit),
-        build(0xCA, dex, .implicit),
         build(0xE0, cpx, .immediate),
         build(0xD0, bne, .relative),
     };
@@ -152,6 +155,7 @@ const Operation = struct {
     }
 
     // operations
+
     fn sec (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.carry = true;
@@ -285,6 +289,13 @@ const Operation = struct {
         defer cycling.* = false;
         register_decrement(cpu, &cpu.x);
         debug("<--- dex cpu.x: {x}\n", .{cpu.x});
+    }
+
+    fn dey (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> dey cpu.y: {x}\n", .{cpu.y});
+        defer cycling.* = false;
+        register_decrement(cpu, &cpu.y);
+        debug("<--- dey cpu.y: {x}\n", .{cpu.y});
     }
 
     fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
@@ -728,7 +739,7 @@ const NesCpu = struct {
         const opcode = self.fetch();
         self.internal.require_new_cycle_frame = false;
         defer self.internal.require_new_cycle_frame = true;
-        self.internal.cycle_count += 1;
+        _ = @addWithOverflow(usize, self.internal.cycle_count, 1, &self.internal.cycle_count);
         debug("<-- fetch op cycle\n", .{});
         suspend; // first fetch always costs a cycle
         debug("--> cycle start op\n", .{});
@@ -1175,4 +1186,30 @@ test "sei" {
     
     expect(cpu.p.interrupt_disable == true);
     expect(cpu.internal.cycle_count == 2);
+}
+
+test "dex" {
+    var cpu = NesCpu.init();
+
+    var program = [_]u8{0xCA};
+    cpu.load(&program);
+    cpu.reset();
+    cpu.x = 1;
+    cpu.interpret();
+
+    expect(cpu.internal.cycle_count == 2);
+    expect(cpu.x == 0);
+}
+
+test "dey" {
+    var cpu = NesCpu.init();
+
+    var program = [_]u8{0x88};
+    cpu.load(&program);
+    cpu.reset();
+    cpu.y = 1;
+    cpu.interpret();
+
+    expect(cpu.internal.cycle_count == 2);
+    expect(cpu.y == 0);
 }
