@@ -101,6 +101,9 @@ const Operation = struct {
         build(0x86, stx, .zero_page),
         build(0x96, stx, .zero_page_y),
 
+        // clear flags
+        build(0x18, clc, .implicit),
+
         build(0xC9, cmp, .immediate),
         build(0xAA, tax, .implicit),
         build(0xCA, dex, .implicit),
@@ -132,6 +135,11 @@ const Operation = struct {
     }
 
     // operations
+    fn clc (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        cycling.* = false;
+        cpu.p.carry = false;
+    }
+
     fn inc (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> inc adressing_mode: {}", .{addressing_mode});
         defer cycling.* = false;
@@ -997,4 +1005,26 @@ test "inc" {
     cpu.interpret();
     expect(cpu.memory[0x1055] == 1);
     expect(cpu.internal.cycle_count == 7);
+}
+
+test "clc" {
+    var cpu =  NesCpu.init();
+
+    var clc = [_]u8{0x18};
+    cpu.load(&clc);
+    cpu.reset();
+    cpu.p.carry = true;
+    cpu.interpret();
+
+    expect(cpu.p.carry == false);
+    expect(cpu.internal.cycle_count == 2);
+
+    cpu.load(&clc);
+    cpu.reset();
+    cpu.p.carry = false;
+    cpu.interpret();
+    
+    expect(cpu.p.carry == false);
+    expect(cpu.internal.cycle_count == 2);
+
 }
