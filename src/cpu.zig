@@ -104,6 +104,7 @@ const Operation = struct {
         // clear flags
         build(0x18, clc, .implicit),
         build(0xD8, cld, .implicit),
+        build(0x58, cli, .implicit),
 
         build(0xC9, cmp, .immediate),
         build(0xAA, tax, .implicit),
@@ -144,6 +145,11 @@ const Operation = struct {
     fn cld (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.decimal_mode = false;
+    }
+
+    fn cli (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        cycling.* = false;
+        cpu.p.interrupt_disable = false;
     }
 
     fn inc (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
@@ -1055,4 +1061,25 @@ test "cld" {
     expect(cpu.p.decimal_mode == false);
     expect(cpu.internal.cycle_count == 2);
 
+}
+
+test "cli" {
+    var cpu = NesCpu.init();
+
+    var cli = [_]u8{0x58};
+    cpu.load(&cli);
+    cpu.reset();
+    cpu.p.interrupt_disable = true;
+    cpu.interpret();
+
+    expect(cpu.p.interrupt_disable == false);
+    expect(cpu.internal.cycle_count == 2);
+
+    cpu.load(&cli);
+    cpu.reset();
+    cpu.p.interrupt_disable = false;
+    cpu.interpret();
+    
+    expect(cpu.p.interrupt_disable == false);
+    expect(cpu.internal.cycle_count == 2);
 }
