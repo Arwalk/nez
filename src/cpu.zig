@@ -106,6 +106,11 @@ const Operation = struct {
         build(0xD8, cld, .implicit),
         build(0x58, cli, .implicit),
 
+        // set flags
+        build(0x38, sec, .implicit),
+        build(0xF8, sed, .implicit),
+        build(0x78, sei, .implicit),
+
         build(0xC9, cmp, .immediate),
         build(0xAA, tax, .implicit),
         build(0xCA, dex, .implicit),
@@ -147,6 +152,21 @@ const Operation = struct {
     }
 
     // operations
+    fn sec (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        cycling.* = false;
+        cpu.p.carry = true;
+    }
+
+    fn sed (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        cycling.* = false;
+        cpu.p.decimal_mode = true;
+    }
+
+    fn sei (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        cycling.* = false;
+        cpu.p.interrupt_disable = true;
+    }
+
     fn clc (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.carry = false;
@@ -1091,5 +1111,68 @@ test "cli" {
     cpu.interpret();
     
     expect(cpu.p.interrupt_disable == false);
+    expect(cpu.internal.cycle_count == 2);
+}
+
+test "sec" {
+    var cpu = NesCpu.init();
+
+    var sec = [_]u8{0x38};
+    cpu.load(&sec);
+    cpu.reset();
+    cpu.p.carry = true;
+    cpu.interpret();
+
+    expect(cpu.p.carry == true);
+    expect(cpu.internal.cycle_count == 2);
+
+    cpu.load(&sec);
+    cpu.reset();
+    cpu.p.carry = false;
+    cpu.interpret();
+    
+    expect(cpu.p.carry == true);
+    expect(cpu.internal.cycle_count == 2);
+}
+
+test "sed" {
+    var cpu = NesCpu.init();
+
+    var sed = [_]u8{0xF8};
+    cpu.load(&sed);
+    cpu.reset();
+    cpu.p.decimal_mode = true;
+    cpu.interpret();
+
+    expect(cpu.p.decimal_mode == true);
+    expect(cpu.internal.cycle_count == 2);
+
+    cpu.load(&sed);
+    cpu.reset();
+    cpu.p.decimal_mode = false;
+    cpu.interpret();
+    
+    expect(cpu.p.decimal_mode == true);
+    expect(cpu.internal.cycle_count == 2);
+}
+
+test "sei" {
+    var cpu = NesCpu.init();
+
+    var sei = [_]u8{0x78};
+    cpu.load(&sei);
+    cpu.reset();
+    cpu.p.interrupt_disable = true;
+    cpu.interpret();
+
+    expect(cpu.p.interrupt_disable == true);
+    expect(cpu.internal.cycle_count == 2);
+
+    cpu.load(&sei);
+    cpu.reset();
+    cpu.p.interrupt_disable = false;
+    cpu.interpret();
+    
+    expect(cpu.p.interrupt_disable == true);
     expect(cpu.internal.cycle_count == 2);
 }
