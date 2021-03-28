@@ -147,7 +147,7 @@ const Operation = struct {
             return op.*;
         }
         warn("Unknown operation opcode: {x}", .{op_code});
-        @panic("Unknown operation for KnownOps.get_operation");
+        @panic("Unknown operation for get_operation");
     }
 
     // operations
