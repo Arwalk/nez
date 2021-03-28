@@ -61,6 +61,10 @@ const Operation = struct {
         };
     }
 
+    pub fn copy(to_copy : *const Operation) Operation {
+        return build(to_copy.op_code_value, to_copy.op_fn, to_copy.addressing_mode);
+    } 
+
     const known_operations = [_]Operation{
         build(0x00, brk, .implicit),
         build(0xEA, nop, .implicit),
@@ -113,6 +117,18 @@ const Operation = struct {
         build(0xD0, bne, .relative),
     };
 
+    var op_lookup : [0xFF]?*const Operation = _get_lookup_table();
+
+    fn _get_lookup_table() [0xFF]?*const Operation {
+        var cmp_op_lookup : [0xFF]?*const Operation = .{null} ** 0xFF;
+
+        inline for (known_operations) |*op| {
+            cmp_op_lookup[op.op_code_value] = op;
+        }
+
+        return cmp_op_lookup;
+    }
+
     fn _get_max_operation_frame_size() usize {
         var size : usize = 0;
         inline for (known_operations) |operation| {
@@ -127,10 +143,8 @@ const Operation = struct {
     const max_frame_size = _get_max_operation_frame_size();
 
     pub fn get_operation(op_code: u8) Operation {
-        for (known_operations) |op| {
-            if(op.op_code_value == op_code){
-                return op;
-            }
+        if(op_lookup[op_code]) |op| {
+            return op.*;
         }
         warn("Unknown operation opcode: {x}", .{op_code});
         @panic("Unknown operation for KnownOps.get_operation");
