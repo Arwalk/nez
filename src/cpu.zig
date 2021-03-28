@@ -132,7 +132,40 @@ const Operation = struct {
     }
 
     // operations
+    fn inc (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("---> inc adressing_mode: {}", .{addressing_mode});
+        defer cycling.* = false;
+        switch(addressing_mode) {
+            .zero_page, .zero_page_x, .absolute, .absolute_x => {
+                var address : u16 = 0;
+                var get_address_cycling = true;
+                var get_address_frame = async get_address(cpu, addressing_mode, &get_address_cycling, &address);
+                
+                while(get_address_cycling) {
+                    suspend;
+                    resume get_address_frame;
+                }
+
+                var value = cpu.mem_read(u8, address);
+                suspend;
+
+                _ = @addWithOverflow(u8, value, 1, &value);
+                suspend;
+
+                cpu.mem_write(u8, address, value);
+                cpu.p.set_flags_val_zero_and_neg(value);
+            },
+
+            else => {
+                @panic("Invalid addressing mode for inc");
+            }
+        }
+        
+        debug("<--- inc", .{});
+    }
+
     fn nop (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        debug("nop", .{});
         cycling.* = false;
     }
 
@@ -368,7 +401,7 @@ const Operation = struct {
 
             else => @panic("Unknown adressing mode for register_load")
         }
-        cpu.p.set_flags_val_and_neg(register_target.*);
+        cpu.p.set_flags_val_zero_and_neg(register_target.*);
     }
 
     fn brk(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
@@ -394,12 +427,18 @@ const Operation = struct {
         out_address.* = 0;
 
         switch(addressing_mode) {
-            .absolute => {
+            .absolute, .absolute_x => {
                 out_address.* = cpu.fetch();
                 suspend; // low part fetch
 
                 out_address.* += (@intCast(u16, cpu.fetch()) << 8);
                 suspend; // high part fetch
+
+                if(addressing_mode.is_plus_register()) {
+                    const register_to_add = addressing_mode.get_register_to_add(cpu);
+                    _ = @addWithOverflow(u16, out_address.*, register_to_add, out_address);
+                    suspend;
+                }
             },
 
             .zero_page, .zero_page_y, .zero_page_x => {
@@ -503,7 +542,7 @@ const NesCpu = struct {
             }
         }
 
-        pub fn set_flags_val_and_neg(self: *ProcessorStatus, value: u8) void {
+        pub fn set_flags_val_zero_and_neg(self: *ProcessorStatus, value: u8) void {
             self.set_flag_val_neg(value);
             self.set_flag_val_zero(value);
         }
