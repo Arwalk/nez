@@ -99,6 +99,10 @@ const Operation = struct {
         // decrement
         build(0xCA, dex, .implicit),
         build(0x88, dey, .implicit),
+        build(0xC6, dec, .zero_page),
+        build(0xD6, dec, .zero_page_x),
+        build(0xCE, dec, .absolute),
+        build(0xDE, dec, .absolute_x),
 
         // store register
         build(0x8E, stx, .absolute),
@@ -187,35 +191,19 @@ const Operation = struct {
     }
 
     fn inc (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
-        debug("---> inc adressing_mode: {}", .{addressing_mode});
-        defer cycling.* = false;
-        switch(addressing_mode) {
-            .zero_page, .zero_page_x, .absolute, .absolute_x => {
-                var address : u16 = 0;
-                var get_address_cycling = true;
-                var get_address_frame = async get_address(cpu, addressing_mode, &get_address_cycling, &address);
-                
-                while(get_address_cycling) {
-                    suspend;
-                    resume get_address_frame;
-                }
-
-                var value = cpu.mem_read(u8, address);
-                suspend;
-
-                _ = @addWithOverflow(u8, value, 1, &value);
-                suspend;
-
-                cpu.mem_write(u8, address, value);
-                cpu.p.set_flags_val_zero_and_neg(value);
-            },
-
-            else => {
-                @panic("Invalid addressing mode for inc");
-            }
+        var op_frame = async memory_dec_or_inc(cpu, .increment, addressing_mode, cycling);
+        while(cycling.*){
+            suspend;
+            resume op_frame;
         }
-        
-        debug("<--- inc", .{});
+    }
+
+    fn dec (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+        var op_frame = async memory_dec_or_inc(cpu, .decrement, addressing_mode, cycling);
+        while(cycling.*){
+            suspend;
+            resume op_frame;
+        }
     }
 
     fn nop (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
@@ -478,6 +466,39 @@ const Operation = struct {
     }
 
     // helpers
+
+    const SubOp = enum {
+        increment,
+        decrement
+    };
+
+    fn memory_dec_or_inc (cpu: *NesCpu, sub_op: SubOp, addressing_mode: AdressingMode, cycling: *bool, ) void {
+        defer cycling.* = false;
+         
+        var address : u16 = 0;
+        var get_address_cycling = true;
+        var get_address_frame = async get_address(cpu, addressing_mode, &get_address_cycling, &address);
+        
+        while(get_address_cycling) {
+            suspend;
+            resume get_address_frame;
+        }
+
+        var value = cpu.mem_read(u8, address);
+        suspend;
+
+        if(sub_op == .increment) {
+            _ = @addWithOverflow(u8, value, 1, &value);
+        }
+        else 
+        {
+            _ = @subWithOverflow(u8, value, 1, &value);
+        }
+        suspend;
+
+        cpu.mem_write(u8, address, value);
+        cpu.p.set_flags_val_zero_and_neg(value);           
+    }
 
     fn register_decrement(cpu: *NesCpu, register: *u8) void {
         _ = @subWithOverflow(u8, register.*, 1, register);
@@ -1212,4 +1233,40 @@ test "dey" {
 
     expect(cpu.internal.cycle_count == 2);
     expect(cpu.y == 0);
+}
+
+test "dec" {
+    var cpu =  NesCpu.init();
+
+    var zero_page = [_]u8{0xC6, 0x20};
+    cpu.load_and_interpret(&zero_page);
+    expect(cpu.memory[0x0020] == 0xFF);
+    expect(cpu.internal.cycle_count == 5);
+
+    // with overflow
+    cpu.memory[0x0020] = 0xFF;
+    cpu.load_and_interpret(&zero_page);
+    expect(cpu.memory[0x0020] == 0xFE);
+    expect(cpu.internal.cycle_count == 5);
+
+    var zero_page_x = [_]u8{0xD6, 0x20};
+    cpu.load(&zero_page_x);
+    cpu.reset();
+    cpu.x = 0x05;
+    cpu.interpret();
+    expect(cpu.memory[0x0025] == 0xFF);
+    expect(cpu.internal.cycle_count == 6);
+
+    var absolute = [_]u8{0xCE, 0x50, 0x10};
+    cpu.load_and_interpret(&absolute);
+    expect(cpu.memory[0x1050] == 0xFF);
+    expect(cpu.internal.cycle_count == 6);
+
+    var absolute_x = [_]u8{0xDE, 0x50, 0x10};
+    cpu.load(&absolute_x);
+    cpu.reset();
+    cpu.x = 0x05;
+    cpu.interpret();
+    expect(cpu.memory[0x1055] == 0xFF);
+    expect(cpu.internal.cycle_count == 7);
 }
