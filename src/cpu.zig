@@ -125,7 +125,7 @@ const Operation = struct {
         build(0xD0, bne, .relative),
     };
 
-    var op_lookup : [0xFF]?*const Operation = _get_lookup_table();
+    const op_lookup : [0xFF]?*const Operation = _get_lookup_table();
 
     fn _get_lookup_table() [0xFF]?*const Operation {
         var cmp_op_lookup : [0xFF]?*const Operation = .{null} ** 0xFF;
