@@ -160,6 +160,10 @@ const Operation = struct {
 
     // operations
 
+    fn sta (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+
+    }
+
     fn sec (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.carry = true;
@@ -533,6 +537,32 @@ const Operation = struct {
                     suspend;
                 }
             },  
+
+            .indexed_indirect => {
+                var param = cpu.fetch();
+                debug("get_address: indeXed indirect param = {x}", .{param});
+                suspend;
+
+                _ = @addWithOverflow(u8, param, cpu.x, &param);
+                suspend;
+
+                out_address.* = cpu.mem_read(u16, param);
+                suspend;
+                suspend;
+            },
+
+            .indirect_indexed => {
+                var param = cpu.fetch();
+                debug("get_address: indirect indexed param = {x}", .{param});
+                suspend;
+
+                out_address.* = cpu.mem_read(u16, param);
+                suspend; 
+                suspend;
+
+                _ = @addWithOverflow(u16, out_address.*, cpu.y, out_address);
+                suspend;
+            },
 
             else => {
                 warn("adressing mode {} not implemented yet", .{addressing_mode});
@@ -1269,4 +1299,30 @@ test "dec" {
     cpu.interpret();
     expect(cpu.memory[0x1055] == 0xFF);
     expect(cpu.internal.cycle_count == 7);
+}
+
+fn test_sta(y: u8, x: u8, address_expected: u16, program : [3]u8, cycle_expected: u8) void {
+    var cpu =  NesCpu.init();
+    cpu.load(&program);
+    cpu.reset();
+    cpu.memory[0x0020] = 0x15;
+    cpu.memory[0x0021] = 0x00;
+    cpu.memory[0x0200] = 0x15;
+    cpu.memory[0x0201] = 0x00;
+    cpu.a = 0x0A;
+    cpu.x = x;
+    cpu.y = y;
+    cpu.interpret();
+    expect(cpu.memory[address_expected] == 0x0A);
+    expect(cpu.internal.cycle_count == cycle_expected);
+}
+
+test "sta" {
+    test_sta(0, 0, 0x15, u8{0x85, 0x15, 0x00}, 3);
+    test_sta(0, 5, 0x15, u8{0x95, 0x10, 0x00}, 4);
+    test_sta(0, 0, 0x1020, u8{0x8D, 0x20, 0x10}, 4);
+    test_sta(0, 5, 0x1025, u8{0x9D, 0x20, 0x10}, 5);
+    test_sta(5, 0, 0x1025, u8{0x99, 0x20, 0x10}, 5);
+    // test_sta(5, 0, 0x15, u8{0x81, 0x15, 0x00}, 6);
+    // test_sta(5, 0, 0x15, u8{0x91, 0x15, 0x00}, 6);
 }
