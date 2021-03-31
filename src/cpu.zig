@@ -109,6 +109,14 @@ const Operation = struct {
         build(0x86, stx, .zero_page),
         build(0x96, stx, .zero_page_y),
 
+        build(0x85, sta, .zero_page),
+        build(0x95, sta, .zero_page_x),
+        build(0x8D, sta, .absolute),
+        build(0x9D, sta, .absolute_x),
+        build(0x99, sta, .absolute_y),
+        build(0x81, sta, .indexed_indirect),
+        build(0x91, sta, .indirect_indexed),
+
         // clear flags
         build(0x18, clc, .implicit),
         build(0xD8, cld, .implicit),
@@ -161,7 +169,13 @@ const Operation = struct {
     // operations
 
     fn sta (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
-
+        debug("---> sta\n", .{});
+        var store_frame = async register_store(cpu, &cpu.a, addressing_mode, cycling);
+        while(cycling.*) {
+            suspend;
+            resume store_frame;
+        }
+        debug("<--- sta\n", .{});
     }
 
     fn sec (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
@@ -465,7 +479,6 @@ const Operation = struct {
         suspend;
         suspend;
         suspend;
-        suspend;
         debug("<--- brk\n", .{});
     }
 
@@ -513,7 +526,7 @@ const Operation = struct {
         out_address.* = 0;
 
         switch(addressing_mode) {
-            .absolute, .absolute_x => {
+            .absolute, .absolute_x, .absolute_y => {
                 out_address.* = cpu.fetch();
                 suspend; // low part fetch
 
@@ -540,12 +553,12 @@ const Operation = struct {
 
             .indexed_indirect => {
                 var param = cpu.fetch();
-                debug("get_address: indeXed indirect param = {x}", .{param});
+                debug("get_address: indeXed indirect param = {x}\n", .{param});
                 suspend;
 
                 _ = @addWithOverflow(u8, param, cpu.x, &param);
                 suspend;
-
+                debug("get_address: indeXed indirect getting address from {x}\n", .{param});
                 out_address.* = cpu.mem_read(u16, param);
                 suspend;
                 suspend;
@@ -553,7 +566,7 @@ const Operation = struct {
 
             .indirect_indexed => {
                 var param = cpu.fetch();
-                debug("get_address: indirect indexed param = {x}", .{param});
+                debug("get_address: indirect indexed param = {x}, y={}\n", .{param, cpu.y});
                 suspend;
 
                 out_address.* = cpu.mem_read(u16, param);
@@ -565,11 +578,11 @@ const Operation = struct {
             },
 
             else => {
-                warn("adressing mode {} not implemented yet", .{addressing_mode});
-                @panic("Error in get_address");
+                warn("adressing mode {} not implemented yet\n", .{addressing_mode});
+                @panic("Error in get_address\n");
             }
         }
-        debug("get_address: {x}", .{out_address.*});
+        debug("get_address: {x}\n", .{out_address.*});
     }
 
     fn register_store(cpu: *NesCpu, register: *u8, addressing_mode: AdressingMode, cycling: *bool) void {
@@ -791,9 +804,9 @@ const NesCpu = struct {
         self.internal.require_new_cycle_frame = false;
         defer self.internal.require_new_cycle_frame = true;
         _ = @addWithOverflow(usize, self.internal.cycle_count, 1, &self.internal.cycle_count);
-        debug("<-- fetch op cycle\n", .{});
+        debug("<-- cycle fetch op\n", .{});
         suspend; // first fetch always costs a cycle
-        debug("--> cycle start op\n", .{});
+        debug("--> cycle continue op\n", .{});
         const op = Operation.get_operation(opcode);
         var cycling = true;
         
@@ -808,7 +821,7 @@ const NesCpu = struct {
             resume op_frame;
         }
         self.internal.cycle_count += 1;
-        debug("<-- cycle end op\n", .{});
+        debug("<-- cycle continue op (end)\n", .{});
     }
 
     pub fn interpret(self: *NesCpu) void {
@@ -1301,8 +1314,9 @@ test "dec" {
     expect(cpu.internal.cycle_count == 7);
 }
 
-fn test_sta(y: u8, x: u8, address_expected: u16, program : [3]u8, cycle_expected: u8) void {
+fn test_sta(y: u8, x: u8, address_expected: u16, program_1 : u8, program_2 : u8, program_3 : u8, cycle_expected: u8) void {
     var cpu =  NesCpu.init();
+    var program = [_]u8{program_1, program_2, program_3};
     cpu.load(&program);
     cpu.reset();
     cpu.memory[0x0020] = 0x15;
@@ -1318,11 +1332,11 @@ fn test_sta(y: u8, x: u8, address_expected: u16, program : [3]u8, cycle_expected
 }
 
 test "sta" {
-    test_sta(0, 0, 0x15, u8{0x85, 0x15, 0x00}, 3);
-    test_sta(0, 5, 0x15, u8{0x95, 0x10, 0x00}, 4);
-    test_sta(0, 0, 0x1020, u8{0x8D, 0x20, 0x10}, 4);
-    test_sta(0, 5, 0x1025, u8{0x9D, 0x20, 0x10}, 5);
-    test_sta(5, 0, 0x1025, u8{0x99, 0x20, 0x10}, 5);
-    // test_sta(5, 0, 0x15, u8{0x81, 0x15, 0x00}, 6);
-    // test_sta(5, 0, 0x15, u8{0x91, 0x15, 0x00}, 6);
+    test_sta(0, 0, 0x15,    0x85, 0x15, 0x00, 3 + 7);
+    test_sta(0, 5, 0x15,    0x95, 0x10, 0x00, 4 + 7);
+    test_sta(0, 0, 0x1020,  0x8D, 0x20, 0x10, 4);
+    test_sta(0, 5, 0x1025,  0x9D, 0x20, 0x10, 5);
+    test_sta(5, 0, 0x1025,  0x99, 0x20, 0x10, 5);
+    test_sta(0, 5, 0x15,    0x81, (0x20-5), 0x00, 6+7);
+    test_sta(5, 0, 0x1A, 0x91, 0x20, 0x00, 6 + 7);
 }
