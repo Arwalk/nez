@@ -61,106 +61,109 @@ const Operation = struct {
         };
     } 
 
-    const known_operations = [_]Operation{
-        build(0x00, brk, .implicit),
-        build(0xEA, nop, .implicit),
+    const KnownOps = struct {
+        ops: [255]?Operation,
+        max_frame_size: usize,
 
-        // load register
-        build(0xA9, lda, .immediate),
-        build(0xA5, lda, .zero_page),
-        build(0xB5, lda, .zero_page_x),
-        build(0xAD, lda, .absolute),
-        build(0xBD, lda, .absolute_x),
-        build(0xB9, lda, .absolute_y),
-        build(0xA1, lda, .indexed_indirect),
-        build(0xB1, lda, .indirect_indexed),
+        fn build_all_ops() KnownOps {
+            comptime const known_operations = [_]Operation{
+                build(0x00, brk, .implicit),
+                build(0xEA, nop, .implicit),
 
-        build(0xA2, ldx, .immediate),
-        build(0xA6, ldx, .zero_page),
-        build(0xB6, ldx, .zero_page_y),
-        build(0xAE, ldx, .absolute),
-        build(0xBE, ldx, .absolute_y),
-        
-        build(0xA0, ldy, .immediate),
-        build(0xA4, ldy, .zero_page),
-        build(0xB4, ldy, .zero_page_x),
-        build(0xAC, ldy, .absolute),
-        build(0xBC, ldy, .absolute_x),
+                // load register
+                build(0xA9, lda, .immediate),
+                build(0xA5, lda, .zero_page),
+                build(0xB5, lda, .zero_page_x),
+                build(0xAD, lda, .absolute),
+                build(0xBD, lda, .absolute_x),
+                build(0xB9, lda, .absolute_y),
+                build(0xA1, lda, .indexed_indirect),
+                build(0xB1, lda, .indirect_indexed),
 
-        // increment
-        build(0xE6, inc, .zero_page),
-        build(0xF6, inc, .zero_page_x),
-        build(0xEE, inc, .absolute),
-        build(0xFE, inc, .absolute_x),
+                build(0xA2, ldx, .immediate),
+                build(0xA6, ldx, .zero_page),
+                build(0xB6, ldx, .zero_page_y),
+                build(0xAE, ldx, .absolute),
+                build(0xBE, ldx, .absolute_y),
+                
+                build(0xA0, ldy, .immediate),
+                build(0xA4, ldy, .zero_page),
+                build(0xB4, ldy, .zero_page_x),
+                build(0xAC, ldy, .absolute),
+                build(0xBC, ldy, .absolute_x),
 
-        build(0xE8, inx, .implicit),
-        build(0xC8, iny, .implicit),
+                // increment
+                build(0xE6, inc, .zero_page),
+                build(0xF6, inc, .zero_page_x),
+                build(0xEE, inc, .absolute),
+                build(0xFE, inc, .absolute_x),
 
-        // decrement
-        build(0xCA, dex, .implicit),
-        build(0x88, dey, .implicit),
-        build(0xC6, dec, .zero_page),
-        build(0xD6, dec, .zero_page_x),
-        build(0xCE, dec, .absolute),
-        build(0xDE, dec, .absolute_x),
+                build(0xE8, inx, .implicit),
+                build(0xC8, iny, .implicit),
 
-        // store register
-        build(0x8E, stx, .absolute),
-        build(0x86, stx, .zero_page),
-        build(0x96, stx, .zero_page_y),
+                // decrement
+                build(0xCA, dex, .implicit),
+                build(0x88, dey, .implicit),
+                build(0xC6, dec, .zero_page),
+                build(0xD6, dec, .zero_page_x),
+                build(0xCE, dec, .absolute),
+                build(0xDE, dec, .absolute_x),
 
-        build(0x85, sta, .zero_page),
-        build(0x95, sta, .zero_page_x),
-        build(0x8D, sta, .absolute),
-        build(0x9D, sta, .absolute_x),
-        build(0x99, sta, .absolute_y),
-        build(0x81, sta, .indexed_indirect),
-        build(0x91, sta, .indirect_indexed),
+                // store register
+                build(0x8E, stx, .absolute),
+                build(0x86, stx, .zero_page),
+                build(0x96, stx, .zero_page_y),
 
-        // clear flags
-        build(0x18, clc, .implicit),
-        build(0xD8, cld, .implicit),
-        build(0x58, cli, .implicit),
+                build(0x85, sta, .zero_page),
+                build(0x95, sta, .zero_page_x),
+                build(0x8D, sta, .absolute),
+                build(0x9D, sta, .absolute_x),
+                build(0x99, sta, .absolute_y),
+                build(0x81, sta, .indexed_indirect),
+                build(0x91, sta, .indirect_indexed),
 
-        // set flags
-        build(0x38, sec, .implicit),
-        build(0xF8, sed, .implicit),
-        build(0x78, sei, .implicit),
+                // clear flags
+                build(0x18, clc, .implicit),
+                build(0xD8, cld, .implicit),
+                build(0x58, cli, .implicit),
 
-        build(0xC9, cmp, .immediate),
-        build(0xAA, tax, .implicit),
-        build(0xE0, cpx, .immediate),
-        build(0xD0, bne, .relative),
+                // set flags
+                build(0x38, sec, .implicit),
+                build(0xF8, sed, .implicit),
+                build(0x78, sei, .implicit),
+
+                build(0xC9, cmp, .immediate),
+                build(0xAA, tax, .implicit),
+                build(0xE0, cpx, .immediate),
+                build(0xD0, bne, .relative),
+            };
+
+            comptime var cmp_op_lookup : [0xFF]? Operation = .{null} ** 0xFF;
+
+            inline for (known_operations) |op| {
+                cmp_op_lookup[op.op_code_value] = op;
+            }
+
+            comptime var size : usize = 0;
+            inline for (known_operations) |operation| {
+                comptime const op_size = @sizeOf(@Frame(operation.op_fn));
+                if (op_size > size) {
+                    size = op_size;
+                }
+            }
+
+            return comptime KnownOps{
+                .ops = cmp_op_lookup,
+                .max_frame_size = size
+            };
+        }
     };
 
-    const op_lookup : [0xFF]?*const Operation = _get_lookup_table();
-
-    fn _get_lookup_table() [0xFF]?*const Operation {
-        var cmp_op_lookup : [0xFF]?*const Operation = .{null} ** 0xFF;
-
-        inline for (known_operations) |*op| {
-            cmp_op_lookup[op.op_code_value] = op;
-        }
-
-        return cmp_op_lookup;
-    }
-
-    fn _get_max_operation_frame_size() usize {
-        var size : usize = 0;
-        inline for (known_operations) |operation| {
-            const op_size = @sizeOf(@Frame(operation.op_fn));
-            if (op_size > size) {
-                size = op_size;
-            }
-        }
-        return size;
-    }
-
-    const max_frame_size = _get_max_operation_frame_size();
+    const all_ops : KnownOps = comptime KnownOps.build_all_ops();
 
     pub fn get_operation(op_code: u8) Operation {
-        if(op_lookup[op_code]) |op| {
-            return op.*;
+        if(all_ops.ops[op_code]) |op| {
+            return op;
         }
         warn("Unknown operation opcode: {x}", .{op_code});
         @panic("Unknown operation for get_operation");
@@ -810,7 +813,7 @@ const NesCpu = struct {
         const op = Operation.get_operation(opcode);
         var cycling = true;
         
-        var bytes: [Operation.max_frame_size]u8 align(16) = undefined;
+        var bytes: [Operation.all_ops.max_frame_size]u8 align(16) = undefined;
 
         var op_frame = @asyncCall(&bytes, {}, op.op_fn, .{self, op.addressing_mode, &cycling});
         while(cycling) {
