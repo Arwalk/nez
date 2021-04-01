@@ -23,10 +23,8 @@ pub fn build(b: *std.build.Builder) void {
     }
 
     const tst = b.step("test", "test all");
-    const t1 = b.addTest("src/main.zig");
-    const t2 = b.addTest("src/cpu.zig");
+    const t1 = b.addTest("src/tests_cpu.zig");
     tst.dependOn(&t1.step);
-    tst.dependOn(&t2.step);
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
