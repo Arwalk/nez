@@ -379,94 +379,18 @@ const Operation = struct {
             .immediate => {
                 register_target.* = cpu.fetch();
             },
-            
-            .zero_page, .zero_page_x, .zero_page_y => {
-                var low_part = cpu.fetch();
-                debug("register_load: address low part = {x}", .{low_part});
-                suspend; // low part fetch
 
-                if(addressing_mode.is_plus_register()) {
-                    const register = addressing_mode.get_register_to_add(cpu);
-                    debug("register_load: adding register value {x} to low_part", .{register});
-                    const carry = @addWithOverflow(u8, low_part, register, &low_part);
-                    debug("register_load: new address low part = {x}", .{low_part});
+            .indirect_indexed, .indexed_indirect, .absolute, .absolute_y, .absolute_x, .zero_page, .zero_page_x, .zero_page_y => {
+                var addr : u16 = 0;
+                var get_address_cycling = true;
+                var get_address_frame = async get_address(cpu, addressing_mode, true, &get_address_cycling, &addr);
+        
+                while(get_address_cycling) {
                     suspend;
+                    resume get_address_frame;
                 }
-
-                debug("register_load: zero page mode: loading value @{x}", .{low_part});
-                register_target.* = cpu.mem_read(u8, low_part);
-                debug("register_load: value loaded in register: {x}", .{register_target.*});
-            },
-
-            .absolute, .absolute_y, .absolute_x => {
-                var low_part = cpu.fetch();
-                debug("register_load: address low part = {x}", .{low_part});
-                suspend; // low part fetch
-
-                var high_part = cpu.fetch();
-                debug("register_load: address high part = {}", .{high_part});
-                suspend; // hi part fetch
-
-                if(addressing_mode.is_plus_register()) {
-                    const register = addressing_mode.get_register_to_add(cpu);
-                    debug("register_load: adding register value {x} to low_part", .{register});
-                    const carry = @addWithOverflow(u8, low_part, register, &low_part);
-                    debug("register_load: new address low part = {x}", .{low_part});
-                    if(carry) {
-                        debug("register_load: page crossed on absolute,[register] adressing", .{});
-                        _ = @addWithOverflow(u8, high_part, 1, &high_part);
-                        debug("register_load: new address high part = {}", .{high_part});
-                        suspend;
-                    }
-                }
-
-                const addr = low_part + (@intCast(u16, high_part) << 8);
-
-                debug("register_load: zero page mode: loading value @{x}", .{addr});
+                
                 register_target.* = cpu.mem_read(u8, addr);
-                debug("register_load: value loaded in register: {x}", .{register_target.*});
-            },
-
-            .indexed_indirect => {
-                var param = cpu.fetch();
-                debug("register_load: indeXed indirect param = {x}", .{param});
-                suspend;
-
-                _ = @addWithOverflow(u8, param, cpu.x, &param);
-                suspend;
-
-                const address = cpu.mem_read(u16, param);
-                suspend;
-                suspend;
-
-                register_target.* = cpu.memory[address];
-            },
-
-            .indirect_indexed => {
-                var param = cpu.fetch();
-                debug("register_load: indirect indexed param = {x}", .{param});
-                suspend;
-
-                var address_lsb = cpu.mem_read(u8, param);
-                debug("register_load: address lsb for indirect indexed @param: {x}", .{address_lsb});
-                const carry = @addWithOverflow(u8, address_lsb, cpu.y, &address_lsb);
-                debug("register_load: address lsb + y = {}, carry = {}", .{address_lsb, carry});
-                suspend;
-
-                var address_msb = cpu.mem_read(u8, param+1);
-                debug("register_load: address msb for indirect indexed @param+1: {x}", .{address_msb});
-                suspend;
-
-                if(carry) {
-                    address_msb += 1;
-                    debug("register_load: carry was positive, msb += 1, now {x}", .{address_msb});
-                    suspend;
-                }
-
-                const address : u16 = address_lsb + (@intCast(u16, address_msb) << 8); 
-                debug("register_load: address is now {x}", .{address});
-                register_target.* = cpu.memory[address];
-                debug("register_load: register value loaded from @address {}", .{register_target.*});
             },
 
             else => @panic("Unknown adressing mode for register_load")
@@ -497,7 +421,7 @@ const Operation = struct {
          
         var address : u16 = 0;
         var get_address_cycling = true;
-        var get_address_frame = async get_address(cpu, addressing_mode, &get_address_cycling, &address);
+        var get_address_frame = async get_address(cpu, addressing_mode, false, &get_address_cycling, &address);
         
         while(get_address_cycling) {
             suspend;
@@ -524,25 +448,11 @@ const Operation = struct {
         _ = @subWithOverflow(u8, register.*, 1, register);
     }
 
-    fn get_address(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool, out_address: *u16) void {
+    fn get_address(cpu: *NesCpu, addressing_mode: AdressingMode, cycle_only_on_page_cross: bool, cycling: *bool, out_address: *u16) void {
         defer cycling.* = false;
         out_address.* = 0;
 
         switch(addressing_mode) {
-            .absolute, .absolute_x, .absolute_y => {
-                out_address.* = cpu.fetch();
-                suspend; // low part fetch
-
-                out_address.* += (@intCast(u16, cpu.fetch()) << 8);
-                suspend; // high part fetch
-
-                if(addressing_mode.is_plus_register()) {
-                    const register_to_add = addressing_mode.get_register_to_add(cpu);
-                    _ = @addWithOverflow(u16, out_address.*, register_to_add, out_address);
-                    suspend;
-                }
-            },
-
             .zero_page, .zero_page_y, .zero_page_x => {
                 out_address.* = cpu.fetch();
                 suspend;
@@ -552,7 +462,34 @@ const Operation = struct {
                     out_address.* = (out_address.* + register_to_add) & 0xFF;
                     suspend;
                 }
-            },  
+            }, 
+
+            .absolute, .absolute_x, .absolute_y => {
+                var low_part = cpu.fetch();
+                suspend; // low part fetch
+
+                var high_part = cpu.fetch();
+                suspend; // hi part fetch
+
+                if(addressing_mode.is_plus_register()) {
+                    const register = addressing_mode.get_register_to_add(cpu);
+                    const carry = @addWithOverflow(u8, low_part, register, &low_part);
+                    if(carry) {
+                        _ = @addWithOverflow(u8, high_part, 1, &high_part);
+                    }
+                    if(cycle_only_on_page_cross and carry)
+                    {
+                        suspend;
+                    }
+                    else if(!cycle_only_on_page_cross)
+                    {
+                        suspend;
+                    }
+                }
+
+                out_address.* = low_part + (@intCast(u16, high_part) << 8);
+
+            },
 
             .indexed_indirect => {
                 var param = cpu.fetch();
@@ -569,15 +506,28 @@ const Operation = struct {
 
             .indirect_indexed => {
                 var param = cpu.fetch();
-                debug("get_address: indirect indexed param = {x}, y={}\n", .{param, cpu.y});
                 suspend;
 
-                out_address.* = cpu.mem_read(u16, param);
-                suspend; 
+                var address_lsb = cpu.mem_read(u8, param);
+                const carry = @addWithOverflow(u8, address_lsb, cpu.y, &address_lsb);
                 suspend;
 
-                _ = @addWithOverflow(u16, out_address.*, cpu.y, out_address);
+                var address_msb = cpu.mem_read(u8, param+1);
                 suspend;
+
+                if(carry) {
+                    address_msb += 1;
+                }
+                if(cycle_only_on_page_cross and carry)
+                {
+                    suspend;
+                }
+                else if(!cycle_only_on_page_cross)
+                {
+                    suspend;
+                }
+
+                out_address.* = address_lsb + (@intCast(u16, address_msb) << 8); 
             },
 
             else => {
@@ -594,7 +544,7 @@ const Operation = struct {
         var address : u16 = 0;
         
         var get_address_cycling = true;
-        var get_address_frame = async get_address(cpu, addressing_mode, &get_address_cycling, &address);
+        var get_address_frame = async get_address(cpu, addressing_mode, false, &get_address_cycling, &address);
         
         while(get_address_cycling) {
             suspend;
