@@ -49,6 +49,10 @@ pub const INesROM = struct {
         var buffer = [_]u8{0} ** (16 + 512 + (16384 * 255) + (8192 * 256) + 32);
         const size_read = file_handle.readAll(&buffer);
 
+        try from_buffer(&buffer);
+    }
+
+    pub fn from_buffer(buffer: []const u8) !void {
         if(
             buffer[0] != 0x4E or
             buffer[1] != 0x45 or
