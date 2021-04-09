@@ -35,10 +35,16 @@ pub const INesROM = struct {
         program_rom: [16384 * 255]u8
     };
 
+    const ChrData = struct {
+        size: u8,
+        rom: [8192 * 255]u8
+    };
+
     pgr: PgrData,
-    size_chr: u8,
+    chr: ChrData,
     mapper: u8,
     flags: INesFlags,
+    trainer: ?[512]u8,
 
     pub fn from_file_path(file_path: []const u8) !void {
         debug("from_file_path : opening file {s}", .{file_path});
@@ -61,6 +67,8 @@ pub const INesROM = struct {
                 return error.NotINes;
         }
         debug("file is INes!", .{});
+
+
     }
 
 };
