@@ -48,116 +48,126 @@ const Operation = struct {
 
     const operation_fn = fn (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void;
 
-    op_code_value: u8,
     op_fn: operation_fn,
     addressing_mode: AdressingMode,
 
     // operation lookup table
-
-    pub fn build(op_code_value: u8, op_fn: operation_fn, addressing_mode: AdressingMode) Operation {
-        return Operation{
-            .op_code_value = op_code_value,
-            .op_fn = op_fn,
-            .addressing_mode = addressing_mode,
-        };
-    } 
 
     const KnownOps = struct {
         ops: [255]?Operation,
         max_frame_size: usize,
     };
 
+    /// this struct is only used to generate KnownOps.
+    const OpDesc = struct {
+        op_code_value: u8,
+        op_fn: operation_fn,
+        addressing_mode: AdressingMode,
+
+        pub fn build(op_code_value: u8, op_fn: operation_fn, addressing_mode: AdressingMode) OpDesc {
+            return OpDesc{
+                .op_code_value = op_code_value,
+                .op_fn = op_fn,
+                .addressing_mode = addressing_mode,
+            };
+        } 
+    };
+
     const all_ops : KnownOps = init: {
-        comptime const known_operations = [_]Operation{
-                build(0x00, brk, .implicit),
-                build(0xEA, nop, .implicit),
 
-                // load register
-                build(0xA9, lda, .immediate),
-                build(0xA5, lda, .zero_page),
-                build(0xB5, lda, .zero_page_x),
-                build(0xAD, lda, .absolute),
-                build(0xBD, lda, .absolute_x),
-                build(0xB9, lda, .absolute_y),
-                build(0xA1, lda, .indexed_indirect),
-                build(0xB1, lda, .indirect_indexed),
+        comptime const known_operations = [_]OpDesc{
+            OpDesc.build(0x00, brk, .implicit),
+            OpDesc.build(0xEA, nop, .implicit),
 
-                build(0xA2, ldx, .immediate),
-                build(0xA6, ldx, .zero_page),
-                build(0xB6, ldx, .zero_page_y),
-                build(0xAE, ldx, .absolute),
-                build(0xBE, ldx, .absolute_y),
-                
-                build(0xA0, ldy, .immediate),
-                build(0xA4, ldy, .zero_page),
-                build(0xB4, ldy, .zero_page_x),
-                build(0xAC, ldy, .absolute),
-                build(0xBC, ldy, .absolute_x),
+            // load register
+            OpDesc.build(0xA9, lda, .immediate),
+            OpDesc.build(0xA5, lda, .zero_page),
+            OpDesc.build(0xB5, lda, .zero_page_x),
+            OpDesc.build(0xAD, lda, .absolute),
+            OpDesc.build(0xBD, lda, .absolute_x),
+            OpDesc.build(0xB9, lda, .absolute_y),
+            OpDesc.build(0xA1, lda, .indexed_indirect),
+            OpDesc.build(0xB1, lda, .indirect_indexed),
 
-                // increment
-                build(0xE6, inc, .zero_page),
-                build(0xF6, inc, .zero_page_x),
-                build(0xEE, inc, .absolute),
-                build(0xFE, inc, .absolute_x),
+            OpDesc.build(0xA2, ldx, .immediate),
+            OpDesc.build(0xA6, ldx, .zero_page),
+            OpDesc.build(0xB6, ldx, .zero_page_y),
+            OpDesc.build(0xAE, ldx, .absolute),
+            OpDesc.build(0xBE, ldx, .absolute_y),
+            
+            OpDesc.build(0xA0, ldy, .immediate),
+            OpDesc.build(0xA4, ldy, .zero_page),
+            OpDesc.build(0xB4, ldy, .zero_page_x),
+            OpDesc.build(0xAC, ldy, .absolute),
+            OpDesc.build(0xBC, ldy, .absolute_x),
 
-                build(0xE8, inx, .implicit),
-                build(0xC8, iny, .implicit),
+            // increment
+            OpDesc.build(0xE6, inc, .zero_page),
+            OpDesc.build(0xF6, inc, .zero_page_x),
+            OpDesc.build(0xEE, inc, .absolute),
+            OpDesc.build(0xFE, inc, .absolute_x),
 
-                // decrement
-                build(0xCA, dex, .implicit),
-                build(0x88, dey, .implicit),
-                build(0xC6, dec, .zero_page),
-                build(0xD6, dec, .zero_page_x),
-                build(0xCE, dec, .absolute),
-                build(0xDE, dec, .absolute_x),
+            OpDesc.build(0xE8, inx, .implicit),
+            OpDesc.build(0xC8, iny, .implicit),
 
-                // store register
-                build(0x8E, stx, .absolute),
-                build(0x86, stx, .zero_page),
-                build(0x96, stx, .zero_page_y),
+            // decrement
+            OpDesc.build(0xCA, dex, .implicit),
+            OpDesc.build(0x88, dey, .implicit),
+            OpDesc.build(0xC6, dec, .zero_page),
+            OpDesc.build(0xD6, dec, .zero_page_x),
+            OpDesc.build(0xCE, dec, .absolute),
+            OpDesc.build(0xDE, dec, .absolute_x),
 
-                build(0x85, sta, .zero_page),
-                build(0x95, sta, .zero_page_x),
-                build(0x8D, sta, .absolute),
-                build(0x9D, sta, .absolute_x),
-                build(0x99, sta, .absolute_y),
-                build(0x81, sta, .indexed_indirect),
-                build(0x91, sta, .indirect_indexed),
+            // store register
+            OpDesc.build(0x8E, stx, .absolute),
+            OpDesc.build(0x86, stx, .zero_page),
+            OpDesc.build(0x96, stx, .zero_page_y),
 
-                // clear flags
-                build(0x18, clc, .implicit),
-                build(0xD8, cld, .implicit),
-                build(0x58, cli, .implicit),
+            OpDesc.build(0x85, sta, .zero_page),
+            OpDesc.build(0x95, sta, .zero_page_x),
+            OpDesc.build(0x8D, sta, .absolute),
+            OpDesc.build(0x9D, sta, .absolute_x),
+            OpDesc.build(0x99, sta, .absolute_y),
+            OpDesc.build(0x81, sta, .indexed_indirect),
+            OpDesc.build(0x91, sta, .indirect_indexed),
 
-                // set flags
-                build(0x38, sec, .implicit),
-                build(0xF8, sed, .implicit),
-                build(0x78, sei, .implicit),
+            // clear flags
+            OpDesc.build(0x18, clc, .implicit),
+            OpDesc.build(0xD8, cld, .implicit),
+            OpDesc.build(0x58, cli, .implicit),
 
-                build(0xC9, cmp, .immediate),
-                build(0xAA, tax, .implicit),
-                build(0xE0, cpx, .immediate),
-                build(0xD0, bne, .relative),
+            // set flags
+            OpDesc.build(0x38, sec, .implicit),
+            OpDesc.build(0xF8, sed, .implicit),
+            OpDesc.build(0x78, sei, .implicit),
+
+            OpDesc.build(0xC9, cmp, .immediate),
+            OpDesc.build(0xAA, tax, .implicit),
+            OpDesc.build(0xE0, cpx, .immediate),
+            OpDesc.build(0xD0, bne, .relative),
+        };
+
+        comptime var cmp_op_lookup : [0xFF]? Operation = .{null} ** 0xFF;
+
+        inline for (known_operations) |op| {
+            cmp_op_lookup[op.op_code_value] = Operation{
+                .op_fn = op.op_fn,
+                .addressing_mode = op.addressing_mode
             };
+        }
 
-            comptime var cmp_op_lookup : [0xFF]? Operation = .{null} ** 0xFF;
-
-            inline for (known_operations) |op| {
-                cmp_op_lookup[op.op_code_value] = op;
+        comptime var size : usize = 0;
+        inline for (known_operations) |operation| {
+            comptime const op_size = @sizeOf(@Frame(operation.op_fn));
+            if (op_size > size) {
+                size = op_size;
             }
+        }
 
-            comptime var size : usize = 0;
-            inline for (known_operations) |operation| {
-                comptime const op_size = @sizeOf(@Frame(operation.op_fn));
-                if (op_size > size) {
-                    size = op_size;
-                }
-            }
-
-            break :init KnownOps{
-                .ops = cmp_op_lookup,
-                .max_frame_size = size
-            };
+        break :init KnownOps{
+            .ops = cmp_op_lookup,
+            .max_frame_size = size
+        };
     };
 
     pub fn get_operation(op_code: u8) Operation {
