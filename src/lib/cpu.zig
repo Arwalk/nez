@@ -75,7 +75,7 @@ const Operation = struct {
 
     const all_ops : KnownOps = init: {
 
-        comptime const known_operations = [_]OpDesc{
+        const known_operations = [_]OpDesc{
             OpDesc.build(0x00, brk, .implicit),
             OpDesc.build(0xEA, nop, .implicit),
 
@@ -147,7 +147,7 @@ const Operation = struct {
             OpDesc.build(0xD0, bne, .relative),
         };
 
-        comptime var cmp_op_lookup : [0xFF]? Operation = .{null} ** 0xFF;
+        var cmp_op_lookup : [0xFF]? Operation = .{null} ** 0xFF;
 
         inline for (known_operations) |op| {
             cmp_op_lookup[op.op_code_value] = Operation{
@@ -156,9 +156,9 @@ const Operation = struct {
             };
         }
 
-        comptime var size : usize = 0;
+        var size : usize = 0;
         inline for (known_operations) |operation| {
-            comptime const op_size = @sizeOf(@Frame(operation.op_fn));
+            const op_size = @sizeOf(@Frame(operation.op_fn));
             if (op_size > size) {
                 size = op_size;
             }
