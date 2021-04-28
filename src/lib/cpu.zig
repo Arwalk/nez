@@ -65,9 +65,10 @@ const Operation = struct {
     const KnownOps = struct {
         ops: [255]?Operation,
         max_frame_size: usize,
+    };
 
-        fn build_all_ops() KnownOps {
-            comptime const known_operations = [_]Operation{
+    const all_ops : KnownOps = init: {
+        comptime const known_operations = [_]Operation{
                 build(0x00, brk, .implicit),
                 build(0xEA, nop, .implicit),
 
@@ -153,14 +154,11 @@ const Operation = struct {
                 }
             }
 
-            return comptime KnownOps{
+            break :init KnownOps{
                 .ops = cmp_op_lookup,
                 .max_frame_size = size
             };
-        }
     };
-
-    const all_ops : KnownOps = comptime KnownOps.build_all_ops();
 
     pub fn get_operation(op_code: u8) Operation {
         if(all_ops.ops[op_code]) |op| {
