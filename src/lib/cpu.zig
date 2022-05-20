@@ -184,38 +184,38 @@ const Operation = struct {
         debug("---> sta\n", .{});
         var store_frame = async register_store(cpu, &cpu.a, addressing_mode, cycling);
         while(cycling.*) {
-            suspend;
+            suspend {}
             resume store_frame;
         }
         debug("<--- sta\n", .{});
     }
 
-    fn sec (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn sec (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.carry = true;
     }
 
-    fn sed (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn sed (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.decimal_mode = true;
     }
 
-    fn sei (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn sei (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.interrupt_disable = true;
     }
 
-    fn clc (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn clc (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.carry = false;
     }
 
-    fn cld (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn cld (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.decimal_mode = false;
     }
 
-    fn cli (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn cli (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         cycling.* = false;
         cpu.p.interrupt_disable = false;
     }
@@ -223,7 +223,7 @@ const Operation = struct {
     fn inc (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         var op_frame = async memory_dec_or_inc(cpu, .increment, addressing_mode, cycling);
         while(cycling.*){
-            suspend;
+            suspend{}
             resume op_frame;
         }
     }
@@ -231,12 +231,12 @@ const Operation = struct {
     fn dec (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         var op_frame = async memory_dec_or_inc(cpu, .decrement, addressing_mode, cycling);
         while(cycling.*){
-            suspend;
+            suspend{}
             resume op_frame;
         }
     }
 
-    fn nop (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn nop (_ : *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("nop", .{});
         cycling.* = false;
     }
@@ -253,14 +253,14 @@ const Operation = struct {
         debug("<--- cmp\n", .{});
     }
 
-    fn bne (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn bne (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> bne\n", .{});
         defer cycling.* = false;
 
         const relative_addr : i8 = @bitCast(i8, cpu.fetch());
 
         if(!cpu.p.zero) {
-            suspend;
+            suspend{}
             debug("bne: jumping to {x} bytes in pc\n", .{relative_addr});
             debug("bne: current pc {x}\n", .{cpu.pc});
             var pc_as_int = @intCast(i32, cpu.pc);
@@ -288,7 +288,7 @@ const Operation = struct {
             .absolute, .zero_page, .zero_page_y => {
                 var store_frame = async register_store(cpu, &cpu.x, addressing_mode, cycling);
                 while(cycling.*) {
-                    suspend;
+                    suspend{}
                     resume store_frame;
                 }
             },
@@ -302,21 +302,21 @@ const Operation = struct {
         debug("<--- stx\n", .{});
     }
 
-    fn dex (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn dex (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> dex cpu.x: {x}\n", .{cpu.x});
         defer cycling.* = false;
-        register_decrement(cpu, &cpu.x);
+        register_decrement(&cpu.x);
         debug("<--- dex cpu.x: {x}\n", .{cpu.x});
     }
 
-    fn dey (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn dey (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> dey cpu.y: {x}\n", .{cpu.y});
         defer cycling.* = false;
-        register_decrement(cpu, &cpu.y);
+        register_decrement(&cpu.y);
         debug("<--- dey cpu.y: {x}\n", .{cpu.y});
     }
 
-    fn inx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn inx (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> inx x: {}\n", .{cpu.x});
         defer cycling.* = false;
         _ = @addWithOverflow(u8, cpu.x, 1, &cpu.x);
@@ -325,7 +325,7 @@ const Operation = struct {
         debug("<--- inx x: {x}\n", .{cpu.x});
     }
 
-    fn iny (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn iny (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> inx x: {}\n", .{cpu.y});
         defer cycling.* = false;
         _ = @addWithOverflow(u8, cpu.y, 1, &cpu.y);
@@ -334,7 +334,7 @@ const Operation = struct {
         debug("<--- inx x: {x}\n", .{cpu.y});
     }
 
-    fn tax (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn tax (cpu: *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> tax a: {}, x: {}\n", .{cpu.a, cpu.x});
         defer cycling.* = false;
 
@@ -347,11 +347,11 @@ const Operation = struct {
     fn lda (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> lda, adressing: {}, cpu.x: {x}, cpu.y: {x}\n", .{addressing_mode, cpu.x, cpu.y});
         var load_frame = async register_load(cpu, addressing_mode, &cpu.a, cycling);
-        suspend;
+        suspend{}
         while(cycling.*)
         {
             resume load_frame;
-            suspend;
+            suspend{}
         }
         debug("<-- lda value: {x}\n", .{cpu.a});
     }
@@ -359,11 +359,11 @@ const Operation = struct {
     fn ldx (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> ldx, adressing: {}, cpu.y: {x}\n", .{addressing_mode, cpu.y});
         var load_frame = async register_load(cpu, addressing_mode, &cpu.x, cycling);
-        suspend;
+        suspend{}
         while(cycling.*)
         {
             resume load_frame;
-            suspend;
+            suspend{}
         }
         debug("<-- ldx value: {x}\n", .{cpu.x});
     }
@@ -371,11 +371,11 @@ const Operation = struct {
     fn ldy (cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> ldy, adressing: {}, cpu.x: {x}\n", .{addressing_mode, cpu.x});
         var load_frame = async register_load(cpu, addressing_mode, &cpu.y, cycling);
-        suspend;
+        suspend{}
         while(cycling.*)
         {
             resume load_frame;
-            suspend;
+            suspend{}
         }
         debug("<-- ldy value: {x}\n", .{cpu.y});
     }
@@ -395,7 +395,7 @@ const Operation = struct {
                 var get_address_frame = async get_address(cpu, addressing_mode, true, &get_address_cycling, &addr);
         
                 while(get_address_cycling) {
-                    suspend;
+                    suspend{}
                     resume get_address_frame;
                 }
                 
@@ -407,14 +407,14 @@ const Operation = struct {
         cpu.p.set_flags_val_zero_and_neg(register_target.*);
     }
 
-    fn brk(cpu: *NesCpu, addressing_mode: AdressingMode, cycling: *bool) callconv(.Async) void {
+    fn brk(_ : *NesCpu, _ : AdressingMode, cycling: *bool) callconv(.Async) void {
         debug("---> brk\n", .{});
         defer cycling.* = false;
-        suspend;
-        suspend;
-        suspend;
-        suspend;
-        suspend;
+        suspend{}
+        suspend{}
+        suspend{}
+        suspend{}
+        suspend{}
         debug("<--- brk\n", .{});
     }
 
@@ -433,12 +433,12 @@ const Operation = struct {
         var get_address_frame = async get_address(cpu, addressing_mode, false, &get_address_cycling, &address);
         
         while(get_address_cycling) {
-            suspend;
+            suspend{}
             resume get_address_frame;
         }
 
         var value = cpu.mem_read(u8, address);
-        suspend;
+        suspend{}
 
         if(sub_op == .increment) {
             _ = @addWithOverflow(u8, value, 1, &value);
@@ -447,13 +447,13 @@ const Operation = struct {
         {
             _ = @subWithOverflow(u8, value, 1, &value);
         }
-        suspend;
+        suspend{}
 
         cpu.mem_write(u8, address, value);
         cpu.p.set_flags_val_zero_and_neg(value);           
     }
 
-    fn register_decrement(cpu: *NesCpu, register: *u8) void {
+    fn register_decrement(register: *u8) void {
         _ = @subWithOverflow(u8, register.*, 1, register);
     }
 
@@ -464,21 +464,21 @@ const Operation = struct {
         switch(addressing_mode) {
             .zero_page, .zero_page_y, .zero_page_x => {
                 out_address.* = cpu.fetch();
-                suspend;
+                suspend{}
 
                 if(addressing_mode.is_plus_register()) {
                     const register_to_add = addressing_mode.get_register_to_add(cpu);
                     out_address.* = (out_address.* + register_to_add) & 0xFF;
-                    suspend;
+                    suspend{}
                 }
             }, 
 
             .absolute, .absolute_x, .absolute_y => {
                 var low_part = cpu.fetch();
-                suspend; // low part fetch
+                suspend{} // low part fetch
 
                 var high_part = cpu.fetch();
-                suspend; // hi part fetch
+                suspend{} // hi part fetch
 
                 if(addressing_mode.is_plus_register()) {
                     const register = addressing_mode.get_register_to_add(cpu);
@@ -488,11 +488,11 @@ const Operation = struct {
                     }
                     if(cycle_only_on_page_cross and carry)
                     {
-                        suspend;
+                        suspend{}
                     }
                     else if(!cycle_only_on_page_cross)
                     {
-                        suspend;
+                        suspend{}
                     }
                 }
 
@@ -503,37 +503,37 @@ const Operation = struct {
             .indexed_indirect => {
                 var param = cpu.fetch();
                 debug("get_address: indeXed indirect param = {x}\n", .{param});
-                suspend;
+                suspend{}
 
                 _ = @addWithOverflow(u8, param, cpu.x, &param);
-                suspend;
+                suspend{}
                 debug("get_address: indeXed indirect getting address from {x}\n", .{param});
                 out_address.* = cpu.mem_read(u16, param);
-                suspend;
-                suspend;
+                suspend{}
+                suspend{}
             },
 
             .indirect_indexed => {
                 var param = cpu.fetch();
-                suspend;
+                suspend{}
 
                 var address_lsb = cpu.mem_read(u8, param);
                 const carry = @addWithOverflow(u8, address_lsb, cpu.y, &address_lsb);
-                suspend;
+                suspend{}
 
                 var address_msb = cpu.mem_read(u8, param+1);
-                suspend;
+                suspend{}
 
                 if(carry) {
                     address_msb += 1;
                 }
                 if(cycle_only_on_page_cross and carry)
                 {
-                    suspend;
+                    suspend{}
                 }
                 else if(!cycle_only_on_page_cross)
                 {
-                    suspend;
+                    suspend{}
                 }
 
                 out_address.* = address_lsb + (@intCast(u16, address_msb) << 8); 
@@ -556,7 +556,7 @@ const Operation = struct {
         var get_address_frame = async get_address(cpu, addressing_mode, false, &get_address_cycling, &address);
         
         while(get_address_cycling) {
-            suspend;
+            suspend{}
             resume get_address_frame;
         }
 
@@ -634,7 +634,7 @@ pub const NesCpu = struct {
             self.set_flag_val_zero(value);
         }
 
-        pub fn debug(self: *ProcessorStatus) void {
+        pub fn debug_self(self: *ProcessorStatus) void {
             debug("{}", .{self});
         }
     };
@@ -687,7 +687,7 @@ pub const NesCpu = struct {
 
         var index : u16 = 0;
         var val = value;
-        comptime const num_shifts : u8 = @bitSizeOf(T) / 8;
+        const num_shifts : u8 = @bitSizeOf(T) / 8;
         
         while (index < num_shifts) : (index += 1) {
             self.memory[address + index] = @intCast(u8, val & 0xFF);
@@ -701,10 +701,10 @@ pub const NesCpu = struct {
             expect((@bitSizeOf(T) % 8) == 0);
         }
 
-        comptime const num_bytes : u3 = @bitSizeOf(T) / 8;
+        const num_bytes : u3 = @bitSizeOf(T) / 8;
         var value : T = 0;
         comptime var index: u4 = 1;
-        comptime const bitshift: u4 = 8;
+        const bitshift: u4 = 8;
 
         value = self.memory[address];
 
@@ -738,14 +738,14 @@ pub const NesCpu = struct {
             switch (rom.mapper) {
                 0 => {
                     if(rom.pgr_rom.len / 16384 == 1){
-                        for(rom.pgr_rom[0..]) |b, i| {
+                        for(rom.pgr_rom[0..]) |_, i| {
                             self.memory[i+0x8000] = rom.pgr_rom[i];
                             self.memory[i+0xC000] = rom.pgr_rom[i];
                         }
                     }
                     else
                     {
-                        for(rom.pgr_rom[0..]) |b, i| {
+                        for(rom.pgr_rom[0..]) |_, i| {
                             self.memory[i+0x8000] = rom.pgr_rom[i];
                         }
                     }
@@ -788,11 +788,11 @@ pub const NesCpu = struct {
         defer self.internal.progam_running = false;
         while(self.pc < self.internal.progam_len){
             var internal_frame = async self.cycle();
-            suspend;
+            suspend{}
 
             while(self.internal.require_new_cycle_frame == false) {
                 resume internal_frame;
-                suspend;
+                suspend{}
             }
         }
     }
@@ -808,7 +808,7 @@ pub const NesCpu = struct {
         defer self.internal.require_new_cycle_frame = true;
         _ = @addWithOverflow(usize, self.internal.cycle_count, 1, &self.internal.cycle_count);
         debug("<-- cycle fetch op\n", .{});
-        suspend; // first fetch always costs a cycle
+        suspend{} // first fetch always costs a cycle
         debug("--> cycle continue op\n", .{});
         const op = Operation.get_operation(opcode);
         var cycling = true;
@@ -819,7 +819,7 @@ pub const NesCpu = struct {
         while(cycling) {
             self.internal.cycle_count += 1;
             debug("<-- cycle continue op\n", .{});
-            suspend;
+            suspend{}
             debug("--> cycle continue op\n", .{});
             resume op_frame;
         }

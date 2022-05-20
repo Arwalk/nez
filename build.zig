@@ -39,7 +39,7 @@ pub fn build(b: *std.build.Builder) void {
     for (packages) |package| {
         exe.addPackage(.{
             .name = package.get_name(),
-            .path = package.get_path()
+            .path = std.build.FileSource.relative(package.get_path())
         });
     }
 
@@ -64,7 +64,7 @@ pub fn build(b: *std.build.Builder) void {
         for (packages) |package| {
             test_def.addPackage(.{
                 .name = package.get_name(),
-                .path = package.get_path()
+                .path = std.build.FileSource.relative(package.get_path())
             });
         }
         tst.dependOn(&test_def.step);
