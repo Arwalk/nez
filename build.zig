@@ -12,6 +12,14 @@ pub fn build(b: *std.build.Builder) void {
     const mode = b.standardReleaseOptions();
 
     const exe = b.addExecutable("nez", "src/main.zig");
+    exe.addPackage(.{
+        .name = "cpu",
+        .path = "src/lib/cpu.zig"
+    });
+    exe.addPackage(.{
+        .name = "ines",
+        .path = "src/lib/ines.zig"
+    });
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
@@ -23,7 +31,11 @@ pub fn build(b: *std.build.Builder) void {
     }
 
     const tst = b.step("test", "test all");
-    const t1 = b.addTest("src/tests_cpu.zig");
+    const t1 = b.addTest("tests/tests_cpu.zig");
+    t1.addPackage(.{
+        .name = "cpu",
+        .path = "src/lib/cpu.zig"
+    });
     tst.dependOn(&t1.step);
 
     const run_step = b.step("run", "Run the app");

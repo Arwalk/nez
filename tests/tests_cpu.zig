@@ -1,6 +1,6 @@
 const std = @import("std");
 const expect = std.testing.expect;
-const cpu_import = @import("cpu.zig");
+const cpu_import = @import("cpu");
 const NesCpu = cpu_import.NesCpu;
 
 test "test_5_ops_working_together" {
