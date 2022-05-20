@@ -18,4 +18,5 @@ test "official only" {
     expect(rom.trainer == null);
     expect(rom.flags.hard_wired_four_screen_mode == false);
     expect(rom.mapper == 1);
+    expect(rom.pgr_rom[0x10006 - 0x10] == 0x83);
 }
