@@ -30,7 +30,7 @@ pub const INesROM = struct {
     const chrdata_multiplier = 8192;
 
     pgr_rom: []u8,
-    chr_rom: []u8,
+    chr_rom: ?[]u8,
     mapper: u8,
     flags: INesFlags,
     trainer: ?[]u8,
@@ -84,11 +84,20 @@ pub const INesROM = struct {
             allocator.free(pgr_rom);
         }
 
-        const chr_rom = try allocator.alloc(u8, chr_size * chrdata_multiplier);
-        errdefer {
-            allocator.free(chr_rom);
-        }
 
+        var chr_rom : ?[]u8 = undefined;
+        if(chr_size != 0)
+        {
+            chr_rom = try allocator.alloc(u8, chr_size * chrdata_multiplier);
+            errdefer {
+                allocator.free(chr_rom);
+            }
+        }
+        else
+        {
+            chr_rom = null;
+        }
+        
         var trainer : ?[]u8 = undefined;
         if(flags.is_trainer_present){
             trainer = try allocator.alloc(u8, 512);
@@ -110,7 +119,9 @@ pub const INesROM = struct {
 
     pub fn free(self: *INesROM, allocator: *std.mem.Allocator) void {
         allocator.free(self.pgr_rom);
-        allocator.free(self.chr_rom);
+        if(self.chr_rom) |chr| {
+            allocator.free(chr);
+        }
     }
 
 };
