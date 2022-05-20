@@ -22,7 +22,6 @@ pub const INesROM = struct {
         // f6
         mirroring: MirroringType,               // b0 horizontal (vertical arrangement) (CIRAM A10 = PPU A11) | vertical (horizontal arrangement) (CIRAM A10 = PPU A10)
         battery_backed_prg_ram: bool,           // b1 Cartridge contains battery-backed PRG RAM ($6000-7FFF) or other persistent memory
-        is_trainer_present: bool,               // b2 512-byte trainer at $7000-$71FF (stored before PRG data)
         hard_wired_four_screen_mode: bool,      // b3 Ignore mirroring control or above mirroring bit; instead provide four-screen VRAM
     };
 
@@ -73,16 +72,32 @@ pub const INesROM = struct {
         const flags : INesFlags = .{
             .mirroring = @intToEnum(MirroringType, @intCast(u1, header[6] & 1)),
             .battery_backed_prg_ram = ((header[6] & (1 << 1)) != 0),
-            .is_trainer_present = ((header[6] & (1 << 2)) != 0),
             .hard_wired_four_screen_mode = ((header[6] & (1 << 3)) != 0),
         };
 
         const mapper: u8 = ((header[6] & 0xF0) >> 4) + (header[7] & 0xF0);
 
-        const pgr_rom = try allocator.alloc(u8, pgr_size * prgrdata_multiplier);
+        var index_pgr: usize = 16;
+
+        var trainer : ?[]u8 = undefined;
+        if(((header[6] & (1 << 2)) != 0)){ // trainer flag
+            trainer = try allocator.alloc(u8, 512);
+            errdefer {
+                allocator.free(trainer);
+            }
+            for(buffer[16..16+512]) | b, i| trainer.?[i] = b;
+            index_pgr += 512;
+        }
+        else
+        {
+            trainer = null;
+        }
+
+        var pgr_rom = try allocator.alloc(u8, pgr_size * prgrdata_multiplier);
         errdefer {
             allocator.free(pgr_rom);
         }
+        for(buffer[index_pgr..index_pgr+pgr_rom.len]) |b , i| pgr_rom[i] = b;
 
 
         var chr_rom : ?[]u8 = undefined;
@@ -92,21 +107,13 @@ pub const INesROM = struct {
             errdefer {
                 allocator.free(chr_rom);
             }
+            for(buffer[index_pgr+pgr_rom.len..index_pgr+pgr_rom.len+chr_rom.?.len]) |b , i| chr_rom.?[i] = b;
         }
         else
         {
             chr_rom = null;
         }
         
-        var trainer : ?[]u8 = undefined;
-        if(flags.is_trainer_present){
-            trainer = try allocator.alloc(u8, 512);
-        }
-        else
-        {
-            trainer = null;
-        }
-
         const rom = INesROM{
             .pgr_rom = pgr_rom,
             .chr_rom = chr_rom,
