@@ -43,7 +43,6 @@ pub fn build(b: *std.build.Builder) void {
         });
     }
 
-
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
@@ -70,7 +69,6 @@ pub fn build(b: *std.build.Builder) void {
         }
         tst.dependOn(&test_def.step);
     }
-
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
