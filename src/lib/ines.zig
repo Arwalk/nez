@@ -82,9 +82,8 @@ pub const INesROM = struct {
         var trainer : ?[]u8 = undefined;
         if(((header[6] & (1 << 2)) != 0)){ // trainer flag
             trainer = try allocator.alloc(u8, 512);
-            errdefer {
-                allocator.free(trainer);
-            }
+            errdefer allocator.free(trainer);
+            
             for(buffer[16..16+512]) | b, i| trainer.?[i] = b;
             index_pgr += 512;
         }
@@ -94,9 +93,8 @@ pub const INesROM = struct {
         }
 
         var pgr_rom = try allocator.alloc(u8, pgr_size * prgrdata_multiplier);
-        errdefer {
-            allocator.free(pgr_rom);
-        }
+        errdefer allocator.free(pgr_rom);
+
         for(buffer[index_pgr..index_pgr+pgr_rom.len]) |b , i| pgr_rom[i] = b;
 
 
@@ -104,9 +102,8 @@ pub const INesROM = struct {
         if(chr_size != 0)
         {
             chr_rom = try allocator.alloc(u8, chr_size * chrdata_multiplier);
-            errdefer {
-                allocator.free(chr_rom);
-            }
+            errdefer allocator.free(chr_rom);
+
             for(buffer[index_pgr+pgr_rom.len..index_pgr+pgr_rom.len+chr_rom.?.len]) |b , i| chr_rom.?[i] = b;
         }
         else

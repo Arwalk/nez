@@ -6,7 +6,7 @@ const NesCpu = cpu_import.NesCpu;
 test "test_5_ops_working_together" {
     var basic_progam = [_]u8{0xA9, 0xC0, 0xAA, 0xE8, 00};
     var cpu =  NesCpu.init();
-    cpu.load(&basic_progam);
+    cpu.load_direct(&basic_progam);
     cpu.reset();
 
     var cpu_frame = async cpu.start_cpu_frame();
@@ -46,7 +46,7 @@ test "test_5_ops_working_together" {
 test "test_inx_overflow" {
     var basic_progam = [_]u8{0xE8, 0xE8, 0x00};    
     var cpu =  NesCpu.init();
-    cpu.load(&basic_progam);
+    cpu.load_direct(&basic_progam);
     cpu.reset();
     cpu.x = 0xFF;
     cpu.interpret();
@@ -121,7 +121,7 @@ test "lda" {
 
 
     var lda_zero_page_x = [_]u8{0xB5, 0x01};
-    cpu.load(&lda_zero_page_x);
+    cpu.load_direct(&lda_zero_page_x);
     cpu.reset();
     cpu.x = 0x01;
     cpu.interpret();
@@ -130,7 +130,7 @@ test "lda" {
 
 
     var lda_zero_page_x_wrapparound = [_]u8{0xB5, 0x03};
-    cpu.load(&lda_zero_page_x_wrapparound);
+    cpu.load_direct(&lda_zero_page_x_wrapparound);
     cpu.reset();
     cpu.x = 0xFF;
     cpu.interpret();
@@ -145,7 +145,7 @@ test "lda" {
 
 
     var lda_absolute_x = [_]u8{0xBD, 0x00, 0x02};
-    cpu.load(&lda_absolute_x);
+    cpu.load_direct(&lda_absolute_x);
     cpu.reset();
     cpu.x = 0x10;
     cpu.interpret();
@@ -154,7 +154,7 @@ test "lda" {
 
 
     var lda_absolute_x_page_crossed = [_]u8{0xBD, 0xFF, 0x02};
-    cpu.load(&lda_absolute_x_page_crossed);
+    cpu.load_direct(&lda_absolute_x_page_crossed);
     cpu.reset();
     cpu.x = 0x01;
     cpu.interpret();
@@ -163,7 +163,7 @@ test "lda" {
 
 
     var lda_absolute_y = [_]u8{0xB9, 0x00, 0x02};
-    cpu.load(&lda_absolute_y);
+    cpu.load_direct(&lda_absolute_y);
     cpu.reset();
     cpu.y = 0x10;
     cpu.interpret();
@@ -172,7 +172,7 @@ test "lda" {
 
 
     var lda_absolute_y_page_crossed = [_]u8{0xB9, 0xFF, 0x02};
-    cpu.load(&lda_absolute_y_page_crossed);
+    cpu.load_direct(&lda_absolute_y_page_crossed);
     cpu.reset();
     cpu.y = 0x01;
     cpu.interpret();
@@ -182,7 +182,7 @@ test "lda" {
 
     for (cpu.memory) |*b| b.* = 0; //resetting memory
     var lda_indexed_indirect = [_]u8{0xa1, 0x00};
-    cpu.load(&lda_indexed_indirect);
+    cpu.load_direct(&lda_indexed_indirect);
     cpu.reset();
     cpu.memory[0x0705] = 0xAA;
     cpu.memory[0x0001] = 0x05;
@@ -198,7 +198,7 @@ test "lda" {
 
     for (cpu.memory) |*b| b.* = 0; //resetting memory
     var lda_indirect_indexed = [_]u8{0xB1, 0x01};
-    cpu.load(&lda_indirect_indexed);
+    cpu.load_direct(&lda_indirect_indexed);
     cpu.reset();
     cpu.memory[0x0203] = 0xAA;
     cpu.memory[0x0001] = 0x00;
@@ -211,7 +211,7 @@ test "lda" {
 
     for (cpu.memory) |*b| b.* = 0; //resetting memory
     var lda_indirect_indexed_page_crossed = [_]u8{0xB1, 0x01};
-    cpu.load(&lda_indirect_indexed_page_crossed);
+    cpu.load_direct(&lda_indirect_indexed_page_crossed);
     cpu.reset();
     cpu.memory[0x0301] = 0xAA;
     cpu.memory[0x0001] = 0x02;
@@ -226,7 +226,7 @@ test "stx" {
     var cpu =  NesCpu.init();
 
     var stx_zero_page = [_]u8{0x86, 0x50};
-    cpu.load(&stx_zero_page);
+    cpu.load_direct(&stx_zero_page);
     cpu.reset();
     cpu.x = 0xAA;
     cpu.interpret();
@@ -234,7 +234,7 @@ test "stx" {
     expect(cpu.internal.cycle_count == 3);
 
     var stx_zero_page_y = [_]u8{0x96, 0x50};
-    cpu.load(&stx_zero_page_y);
+    cpu.load_direct(&stx_zero_page_y);
     cpu.reset();
     cpu.x = 0xBB;
     cpu.y = 0x05;
@@ -243,7 +243,7 @@ test "stx" {
     expect(cpu.internal.cycle_count == 4);
 
     // with wrapparound
-    cpu.load(&stx_zero_page_y);
+    cpu.load_direct(&stx_zero_page_y);
     cpu.reset();
     cpu.x = 0xCC;
     cpu.y = 0xB2;
@@ -267,7 +267,7 @@ test "inc" {
     expect(cpu.internal.cycle_count == 5);
 
     var zero_page_x = [_]u8{0xF6, 0x20};
-    cpu.load(&zero_page_x);
+    cpu.load_direct(&zero_page_x);
     cpu.reset();
     cpu.x = 0x05;
     cpu.interpret();
@@ -280,7 +280,7 @@ test "inc" {
     expect(cpu.internal.cycle_count == 6);
 
     var absolute_x = [_]u8{0xFE, 0x50, 0x10};
-    cpu.load(&absolute_x);
+    cpu.load_direct(&absolute_x);
     cpu.reset();
     cpu.x = 0x05;
     cpu.interpret();
@@ -292,7 +292,7 @@ test "clc" {
     var cpu =  NesCpu.init();
 
     var clc = [_]u8{0x18};
-    cpu.load(&clc);
+    cpu.load_direct(&clc);
     cpu.reset();
     cpu.p.carry = true;
     cpu.interpret();
@@ -300,7 +300,7 @@ test "clc" {
     expect(cpu.p.carry == false);
     expect(cpu.internal.cycle_count == 2);
 
-    cpu.load(&clc);
+    cpu.load_direct(&clc);
     cpu.reset();
     cpu.p.carry = false;
     cpu.interpret();
@@ -314,7 +314,7 @@ test "cld" {
     var cpu =  NesCpu.init();
 
     var cld = [_]u8{0xD8};
-    cpu.load(&cld);
+    cpu.load_direct(&cld);
     cpu.reset();
     cpu.p.decimal_mode = true;
     cpu.interpret();
@@ -322,7 +322,7 @@ test "cld" {
     expect(cpu.p.decimal_mode == false);
     expect(cpu.internal.cycle_count == 2);
 
-    cpu.load(&cld);
+    cpu.load_direct(&cld);
     cpu.reset();
     cpu.p.decimal_mode = false;
     cpu.interpret();
@@ -336,7 +336,7 @@ test "cli" {
     var cpu = NesCpu.init();
 
     var cli = [_]u8{0x58};
-    cpu.load(&cli);
+    cpu.load_direct(&cli);
     cpu.reset();
     cpu.p.interrupt_disable = true;
     cpu.interpret();
@@ -344,7 +344,7 @@ test "cli" {
     expect(cpu.p.interrupt_disable == false);
     expect(cpu.internal.cycle_count == 2);
 
-    cpu.load(&cli);
+    cpu.load_direct(&cli);
     cpu.reset();
     cpu.p.interrupt_disable = false;
     cpu.interpret();
@@ -357,7 +357,7 @@ test "sec" {
     var cpu = NesCpu.init();
 
     var sec = [_]u8{0x38};
-    cpu.load(&sec);
+    cpu.load_direct(&sec);
     cpu.reset();
     cpu.p.carry = true;
     cpu.interpret();
@@ -365,7 +365,7 @@ test "sec" {
     expect(cpu.p.carry == true);
     expect(cpu.internal.cycle_count == 2);
 
-    cpu.load(&sec);
+    cpu.load_direct(&sec);
     cpu.reset();
     cpu.p.carry = false;
     cpu.interpret();
@@ -378,7 +378,7 @@ test "sed" {
     var cpu = NesCpu.init();
 
     var sed = [_]u8{0xF8};
-    cpu.load(&sed);
+    cpu.load_direct(&sed);
     cpu.reset();
     cpu.p.decimal_mode = true;
     cpu.interpret();
@@ -386,7 +386,7 @@ test "sed" {
     expect(cpu.p.decimal_mode == true);
     expect(cpu.internal.cycle_count == 2);
 
-    cpu.load(&sed);
+    cpu.load_direct(&sed);
     cpu.reset();
     cpu.p.decimal_mode = false;
     cpu.interpret();
@@ -399,7 +399,7 @@ test "sei" {
     var cpu = NesCpu.init();
 
     var sei = [_]u8{0x78};
-    cpu.load(&sei);
+    cpu.load_direct(&sei);
     cpu.reset();
     cpu.p.interrupt_disable = true;
     cpu.interpret();
@@ -407,7 +407,7 @@ test "sei" {
     expect(cpu.p.interrupt_disable == true);
     expect(cpu.internal.cycle_count == 2);
 
-    cpu.load(&sei);
+    cpu.load_direct(&sei);
     cpu.reset();
     cpu.p.interrupt_disable = false;
     cpu.interpret();
@@ -420,7 +420,7 @@ test "dex" {
     var cpu = NesCpu.init();
 
     var program = [_]u8{0xCA};
-    cpu.load(&program);
+    cpu.load_direct(&program);
     cpu.reset();
     cpu.x = 1;
     cpu.interpret();
@@ -433,7 +433,7 @@ test "dey" {
     var cpu = NesCpu.init();
 
     var program = [_]u8{0x88};
-    cpu.load(&program);
+    cpu.load_direct(&program);
     cpu.reset();
     cpu.y = 1;
     cpu.interpret();
@@ -457,7 +457,7 @@ test "dec" {
     expect(cpu.internal.cycle_count == 5);
 
     var zero_page_x = [_]u8{0xD6, 0x20};
-    cpu.load(&zero_page_x);
+    cpu.load_direct(&zero_page_x);
     cpu.reset();
     cpu.x = 0x05;
     cpu.interpret();
@@ -470,7 +470,7 @@ test "dec" {
     expect(cpu.internal.cycle_count == 6);
 
     var absolute_x = [_]u8{0xDE, 0x50, 0x10};
-    cpu.load(&absolute_x);
+    cpu.load_direct(&absolute_x);
     cpu.reset();
     cpu.x = 0x05;
     cpu.interpret();
@@ -481,7 +481,7 @@ test "dec" {
 fn test_sta(y: u8, x: u8, address_expected: u16, program_1 : u8, program_2 : u8, program_3 : u8, cycle_expected: u8) void {
     var cpu =  NesCpu.init();
     var program = [_]u8{program_1, program_2, program_3};
-    cpu.load(&program);
+    cpu.load_direct(&program);
     cpu.reset();
     cpu.memory[0x0020] = 0x15;
     cpu.memory[0x0021] = 0x00;

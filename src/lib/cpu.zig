@@ -1,4 +1,5 @@
 const std = @import("std");
+const ines = @import("ines.zig");
 const Int = std.meta.Int;
 const expect = std.testing.expect;
 const warn = std.log.warn;
@@ -645,8 +646,9 @@ pub const NesCpu = struct {
     y: u8,
     sp: u8, // stack pointer
     p: ProcessorStatus, // processor status flags
-    pc: u16, // program counter
-    memory: [0xFFFF]u8,
+    pc: usize, // program counter
+    memory: [0xFFFF + 1]u8,
+    rom : ?*ines.INesROM,
 
     pub fn init() NesCpu {
         var nescpu = NesCpu{
@@ -656,19 +658,20 @@ pub const NesCpu = struct {
             .sp = 0,
             .p = ProcessorStatus.init(),
             .pc = 0x8000,
-            .memory = [_]u8{0} ** 0xFFFF,
+            .memory = [_]u8{0} ** (0xFFFF + 1),
             .internal = Internal{
                 .cycle_count = 0,
                 .fetch_count = 0,
                 .progam_len = 0,
                 .progam_running = false,
                 .require_new_cycle_frame = true,
-            }
+            },
+            .rom = null
         };
         return nescpu;
     }
 
-    fn mem_write(self: *NesCpu, comptime T: type, address: u16, value: T) void {
+    pub fn mem_write(self: *NesCpu, comptime T: type, address: u16, value: T) void {
         comptime {
             expect(@bitSizeOf(T) >= 8);
             expect((@bitSizeOf(T) % 8) == 0);
@@ -684,7 +687,7 @@ pub const NesCpu = struct {
         }
     }
 
-    fn mem_read(self: *NesCpu, comptime T: type, address: u16) T {
+    pub fn mem_read(self: *NesCpu, comptime T: type, address: u16) T {
         comptime {
             expect(@bitSizeOf(T) >= 8);
             expect((@bitSizeOf(T) % 8) == 0);
@@ -707,12 +710,47 @@ pub const NesCpu = struct {
         return value;
     }
 
-    pub fn load(self: *NesCpu, program: []u8) void {
+    pub fn load_direct(self: *NesCpu, program: []u8) void {
         debug("--> load\n", .{});
         for (program[0..program.len]) |b, i| self.memory[i + 0x8000] = b;
         self.mem_write(u16, 0xFFFC, 0x8000);
         self.internal.progam_len = program.len + 0x8000;
         debug("<-- load\n", .{});
+    }
+
+    pub fn load(self: *NesCpu, rom: *ines.INesROM) void {
+        debug("--> load\n", .{});
+        self.rom = rom;
+        self.load_rom();
+        debug("<-- load\n", .{});
+    }
+
+    fn load_rom(self: *NesCpu) void {
+        if (self.rom) |rom| {
+            switch (rom.mapper) {
+                0 => {
+                    if(rom.pgr_rom.len / 16384 == 1){
+                        for(rom.pgr_rom[0..]) |b, i| {
+                            self.memory[i+0x8000] = rom.pgr_rom[i];
+                            self.memory[i+0xC000] = rom.pgr_rom[i];
+                        }
+                    }
+                    else
+                    {
+                        for(rom.pgr_rom[0..]) |b, i| {
+                            self.memory[i+0x8000] = rom.pgr_rom[i];
+                        }
+                    }
+                    self.internal.progam_len = 0xFFFF + 1;
+                },
+                else => {
+                    @panic("mapper not implemented");
+                }
+            }
+        }
+        else{
+            @panic("no rom loaded");
+        }
     }
 
     pub fn reset(self: *NesCpu) void {
@@ -751,6 +789,10 @@ pub const NesCpu = struct {
         }
     }
 
+    pub fn is_op_over(self: *NesCpu) bool {
+        return self.internal.require_new_cycle_frame;
+    }
+
     fn cycle(self: *NesCpu) void {
         debug("--> cycle fetch op\n", .{});
         const opcode = self.fetch();
@@ -762,7 +804,7 @@ pub const NesCpu = struct {
         debug("--> cycle continue op\n", .{});
         const op = Operation.get_operation(opcode);
         var cycling = true;
-        
+
         var bytes: [Operation.all_ops.max_frame_size]u8 align(16) = undefined;
 
         var op_frame = @asyncCall(&bytes, {}, op.op_fn, .{self, op.addressing_mode, &cycling});
@@ -785,7 +827,7 @@ pub const NesCpu = struct {
     }
 
     pub fn load_and_interpret(self: *NesCpu, program: []u8) void {
-        self.load(program);
+        self.load_direct(program);
         self.reset();
         self.interpret();
     }
